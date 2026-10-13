@@ -1,0 +1,31 @@
+
+name: Task Manager CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  push:
+    branches:
+      - main
+      - develop
+
+permissions:
+  contents: read
+
+jobs:
+  repository-check:
+    name: Repository Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify repository structure
+        run: |
+          echo "Checking Task Manager repository..."
+          test -d docs
+          echo "Documentation folder found."
+          echo "Basic repository check passed."
