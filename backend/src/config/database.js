@@ -8,4 +8,8 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD || undefined,
 });
 
+pool.on("error", (error) => {
+  console.error("Unexpected PostgreSQL connection error:", error.message);
+});
+
 module.exports = pool;

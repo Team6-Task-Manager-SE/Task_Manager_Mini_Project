@@ -239,6 +239,53 @@ https://github.com/Team6-Task-Manager-SE
 
 ---
 
+## Local Development
+
+### Prerequisites
+
+- Node.js 20 or newer
+- PostgreSQL 16 or compatible
+- Redis 7 or compatible
+
+### Start the backend
+
+```bash
+cd backend
+cp .env.example .env
+npm ci
+npm run db:migrate
+npm start
+```
+
+Configure the database, Redis, JWT, and optional SMTP values in `backend/.env`.
+If SMTP is not configured, registration confirmation links are printed to the
+backend console for local development.
+
+### Start the frontend
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+The frontend runs at `http://127.0.0.1:5173` and proxies `/api` requests to the
+backend at `http://127.0.0.1:5000`.
+
+### Authentication API
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/auth/register` | Create an account and send a confirmation link |
+| `POST` | `/api/auth/login` | Authenticate and receive a JWT |
+| `GET` | `/api/auth/confirm-email?token=...` | Confirm a registered email address |
+| `GET` | `/api/auth/me` | Return the authenticated user; requires a bearer token |
+
+Authentication endpoints are limited to 10 requests per IP address per minute.
+Five consecutive incorrect passwords lock the account for 15 minutes.
+
+---
+
 ## Future Enhancements
 
 - Improved reporting and analytics.
