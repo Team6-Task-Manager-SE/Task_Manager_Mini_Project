@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const taskRoutes = require("./routes/taskRoutes");
 
 const app = express();
 
@@ -18,5 +19,7 @@ app.get("/api/health", (req, res) => {
     message: "Task Manager API is healthy",
   });
 });
+
+app.use("/api/tasks", taskRoutes);
 
 module.exports = app;
