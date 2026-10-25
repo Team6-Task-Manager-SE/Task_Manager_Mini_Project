@@ -5,7 +5,7 @@ const createTaskRules = [
     .isString()
     .withMessage("Title must be a string")
     .bail()
-    .trim()
+    .trim().escape()
     .notEmpty()
     .withMessage("Title is required")
     .bail()
@@ -16,7 +16,7 @@ const createTaskRules = [
     .isString()
     .withMessage("Description must be a string")
     .bail()
-    .trim()
+    .trim().escape()
     .isLength({ max: 5000 })
     .withMessage("Description must be at most 5000 characters"),
   body("dueDate")
