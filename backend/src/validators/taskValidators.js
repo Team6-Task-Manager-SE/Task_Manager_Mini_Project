@@ -57,6 +57,13 @@ const updateTaskRules = [
     .withMessage("Due date must be a valid ISO 8601 date")
     .bail()
     .toDate(),
+
+  body("status")
+    .optional()
+    .isIn(["todo", "in-progress", "completed"])
+    .withMessage(
+      "Status must be todo, in-progress, or completed"
+    ),
 ];
 
 module.exports = {

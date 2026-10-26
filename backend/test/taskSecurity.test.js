@@ -214,3 +214,84 @@ test("deleting a task with an invalid id returns 400", async () => {
 
   assert.equal(response.status, 400);
 });
+
+test("a user can update their own task status", async () => {
+  const token = tokenFor(91013);
+
+  const created = await request(app)
+    .post("/api/tasks")
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      title: "Status update task",
+    });
+
+  assert.equal(created.status, 201);
+  assert.equal(created.body.data.status, "todo");
+
+  const taskId = created.body.data.id;
+
+  const updated = await request(app)
+    .patch(`/api/tasks/${taskId}`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      status: "in-progress",
+    });
+
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.data.status, "in-progress");
+
+  const completed = await request(app)
+    .patch(`/api/tasks/${taskId}`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      status: "completed",
+    });
+
+  assert.equal(completed.status, 200);
+  assert.equal(completed.body.data.status, "completed");
+});
+
+test("invalid task status returns 400", async () => {
+  const token = tokenFor(91014);
+
+  const created = await request(app)
+    .post("/api/tasks")
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      title: "Invalid status test",
+    });
+
+  assert.equal(created.status, 201);
+
+  const response = await request(app)
+    .patch(`/api/tasks/${created.body.data.id}`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      status: "finished",
+    });
+
+  assert.equal(response.status, 400);
+});
+
+test("another user cannot update task status", async () => {
+  const ownerToken = tokenFor(91015);
+  const otherUserToken = tokenFor(91016);
+
+  const created = await request(app)
+    .post("/api/tasks")
+    .set("Authorization", `Bearer ${ownerToken}`)
+    .send({
+      title: "Private status task",
+    });
+
+  assert.equal(created.status, 201);
+
+  const response = await request(app)
+    .patch(`/api/tasks/${created.body.data.id}`)
+    .set("Authorization", `Bearer ${otherUserToken}`)
+    .send({
+      status: "completed",
+    });
+
+  assert.equal(response.status, 403);
+});
