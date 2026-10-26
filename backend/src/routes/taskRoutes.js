@@ -9,6 +9,7 @@ const {
 
 const validateRequest = require("../middleware/validateRequest");
 const authenticate = require("../middleware/authenticate");
+const authorizeRoles = require("../middleware/authorizeRoles");
 
 const router = express.Router();
 
@@ -25,6 +26,7 @@ function requireUser(req, res, next) {
 
 router.use(authenticate);
 router.use(requireUser);
+router.use(authorizeRoles("user", "admin"));
 
 // Get tasks belonging to authenticated user
 router.get("/", (req, res) => {

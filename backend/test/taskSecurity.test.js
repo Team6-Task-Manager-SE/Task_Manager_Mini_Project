@@ -29,6 +29,15 @@ test("task endpoints reject an invalid bearer token", async () => {
   assert.equal(response.status, 401);
 });
 
+test("task endpoints reject a role without task access", async () => {
+  const response = await request(app)
+    .get("/api/tasks")
+    .set("Authorization", `Bearer ${tokenFor(91000, "guest")}`);
+
+  assert.equal(response.status, 403);
+  assert.equal(response.body.code, "FORBIDDEN");
+});
+
 test("a user can create a task and see their own task", async () => {
   const token = tokenFor(91001);
 
@@ -161,7 +170,6 @@ test("editing another user's task returns 403", async () => {
 
   assert.equal(response.status, 403);
 });
-
 test("a user can delete their own task", async () => {
   const token = tokenFor(91010);
 
@@ -214,7 +222,6 @@ test("deleting a task with an invalid id returns 400", async () => {
 
   assert.equal(response.status, 400);
 });
-
 test("a user can update their own task status", async () => {
   const token = tokenFor(91013);
 
