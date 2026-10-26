@@ -107,3 +107,58 @@ test("task title and description HTML are escaped", async () => {
   assert.ok(!response.body.data.description.includes("<img"));
   assert.ok(response.body.data.description.includes("&lt;img"));
 });
+
+test("a user can edit their own task", async () => {
+  const token = tokenFor(91007);
+
+  const created = await request(app)
+    .post("/api/tasks")
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      title: "Original title",
+      description: "Original description",
+    });
+
+  assert.equal(created.status, 201);
+
+  const taskId = created.body.data.id;
+
+  const updated = await request(app)
+    .patch(`/api/tasks/${taskId}`)
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      title: "Updated title",
+      description: "Updated description",
+      dueDate: "2026-10-30",
+    });
+
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.data.title, "Updated title");
+  assert.equal(updated.body.data.description, "Updated description");
+  assert.equal(updated.body.data.status, "todo");
+});
+
+test("editing another user's task returns 403", async () => {
+  const ownerToken = tokenFor(91008);
+  const otherUserToken = tokenFor(91009);
+
+  const created = await request(app)
+    .post("/api/tasks")
+    .set("Authorization", `Bearer ${ownerToken}`)
+    .send({
+      title: "Owner task",
+    });
+
+  assert.equal(created.status, 201);
+
+  const taskId = created.body.data.id;
+
+  const response = await request(app)
+    .patch(`/api/tasks/${taskId}`)
+    .set("Authorization", `Bearer ${otherUserToken}`)
+    .send({
+      title: "Changed by another user",
+    });
+
+  assert.equal(response.status, 403);
+});
