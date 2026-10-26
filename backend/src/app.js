@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
 const pool = require("./config/database");
 const redisClient = require("./config/redis");
 const { createUserRepository } = require("./repositories/userRepository");
@@ -7,6 +8,7 @@ const { createAuthService } = require("./services/authService");
 const createEmailService = require("./services/emailService");
 const createAuthController = require("./controllers/authController");
 const createAuthRouter = require("./routes/authRoutes");
+const taskRoutes = require("./routes/taskRoutes");
 
 function createApp(dependencies = {}) {
   const database = dependencies.pool || pool;
@@ -18,6 +20,7 @@ function createApp(dependencies = {}) {
   const app = express();
 
   app.disable("x-powered-by");
+  app.use(helmet());
   app.use(cors({ origin: process.env.FRONTEND_URL || "http://127.0.0.1:5173" }));
   app.use(express.json({ limit: "32kb" }));
 
@@ -33,6 +36,7 @@ function createApp(dependencies = {}) {
   });
 
   app.use("/api/auth", createAuthRouter({ controller: authController, redisClient: cache }));
+  app.use("/api/tasks", taskRoutes);
 
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
