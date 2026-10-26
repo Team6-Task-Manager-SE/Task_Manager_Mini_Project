@@ -46,7 +46,12 @@ function getById(id) {
   return tasks.find((task) => task.id === id) || null;
 }
 
-function create({ title, description = "", dueDate = null, ownerId }) {
+function create({
+  title,
+  description = "",
+  dueDate = null,
+  ownerId,
+}) {
   const task = {
     id: nextId++,
     title: escapeHtml(title),
@@ -81,6 +86,10 @@ function update(id, ownerId, changes) {
 
   if (changes.dueDate !== undefined) {
     task.dueDate = changes.dueDate;
+  }
+
+  if (changes.status !== undefined) {
+    task.status = changes.status;
   }
 
   return task;
