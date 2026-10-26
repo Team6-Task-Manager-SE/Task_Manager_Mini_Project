@@ -107,3 +107,56 @@ test("task title and description HTML are escaped", async () => {
   assert.ok(!response.body.data.description.includes("<img"));
   assert.ok(response.body.data.description.includes("&lt;img"));
 });
+
+test("a user can delete their own task", async () => {
+  const token = tokenFor(91010);
+
+  const created = await request(app)
+    .post("/api/tasks")
+    .set("Authorization", `Bearer ${token}`)
+    .send({
+      title: "Task to delete",
+    });
+
+  assert.equal(created.status, 201);
+
+  const taskId = created.body.data.id;
+
+  const deleted = await request(app)
+    .delete(`/api/tasks/${taskId}`)
+    .set("Authorization", `Bearer ${token}`);
+
+  assert.equal(deleted.status, 200);
+  assert.equal(
+    deleted.body.message,
+    "Task deleted successfully"
+  );
+
+  const listed = await request(app)
+    .get("/api/tasks")
+    .set("Authorization", `Bearer ${token}`);
+
+  assert.ok(
+    !listed.body.data.some((task) => task.id === taskId)
+  );
+});
+
+test("deleting a task that does not exist returns 404", async () => {
+  const token = tokenFor(91011);
+
+  const response = await request(app)
+    .delete("/api/tasks/999999")
+    .set("Authorization", `Bearer ${token}`);
+
+  assert.equal(response.status, 404);
+});
+
+test("deleting a task with an invalid id returns 400", async () => {
+  const token = tokenFor(91012);
+
+  const response = await request(app)
+    .delete("/api/tasks/abc")
+    .set("Authorization", `Bearer ${token}`);
+
+  assert.equal(response.status, 400);
+});
