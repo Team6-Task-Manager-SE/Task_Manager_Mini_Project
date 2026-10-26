@@ -1,3 +1,4 @@
+
 let tasks = [
   {
     id: 1,
@@ -5,6 +6,7 @@ let tasks = [
     description: "Complete Sprint 1 implementation",
     dueDate: null,
     status: "todo",
+    ownerId: null,
   },
   {
     id: 2,
@@ -12,6 +14,7 @@ let tasks = [
     description: "",
     dueDate: null,
     status: "todo",
+    ownerId: null,
   },
   {
     id: 3,
@@ -19,30 +22,42 @@ let tasks = [
     description: "",
     dueDate: null,
     status: "in-progress",
+    ownerId: null,
   },
 ];
 
 let nextId = 4;
 
-function getAll() {
-  return tasks;
+function getAll(ownerId) {
+  return tasks.filter(
+    (task) => task.ownerId === Number(ownerId)
+  );
 }
 
-function create({ title, description = "", dueDate = null }) {
+function getById(id) {
+  return tasks.find((task) => task.id === id) || null;
+}
+
+function create({ title, description = "", dueDate = null, ownerId }) {
   const task = {
     id: nextId++,
     title,
     description,
     dueDate,
     status: "todo",
+    ownerId: Number(ownerId),
   };
 
   tasks.push(task);
   return task;
 }
 
-function remove(id) {
-  const index = tasks.findIndex((task) => task.id === id);
+function remove(id, ownerId) {
+  const index = tasks.findIndex(
+    (task) =>
+      task.id === id &&
+      task.ownerId === Number(ownerId)
+  );
 
   if (index === -1) {
     return false;
@@ -54,6 +69,7 @@ function remove(id) {
 
 module.exports = {
   getAll,
+  getById,
   create,
   remove,
 };
