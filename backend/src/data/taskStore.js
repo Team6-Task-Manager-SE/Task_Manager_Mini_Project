@@ -1,3 +1,11 @@
+function escapeHtml(value) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 let tasks = [
   {
@@ -41,14 +49,40 @@ function getById(id) {
 function create({ title, description = "", dueDate = null, ownerId }) {
   const task = {
     id: nextId++,
-    title,
-    description,
+    title: escapeHtml(title),
+    description: escapeHtml(description),
     dueDate,
     status: "todo",
     ownerId: Number(ownerId),
   };
 
   tasks.push(task);
+  return task;
+}
+
+function update(id, ownerId, changes) {
+  const task = tasks.find(
+    (task) =>
+      task.id === id &&
+      task.ownerId === Number(ownerId)
+  );
+
+  if (!task) {
+    return null;
+  }
+
+  if (changes.title !== undefined) {
+    task.title = escapeHtml(changes.title);
+  }
+
+  if (changes.description !== undefined) {
+    task.description = escapeHtml(changes.description);
+  }
+
+  if (changes.dueDate !== undefined) {
+    task.dueDate = changes.dueDate;
+  }
+
   return task;
 }
 
@@ -71,5 +105,6 @@ module.exports = {
   getAll,
   getById,
   create,
+  update,
   remove,
 };
