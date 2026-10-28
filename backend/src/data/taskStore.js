@@ -7,6 +7,25 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+const PRIORITIES = ["low", "medium", "high"];
+
+function normalizeTags(tags) {
+  if (!Array.isArray(tags)) {
+    return [];
+  }
+
+  const seen = new Set();
+
+  tags.forEach((tag) => {
+    const clean = String(tag).trim().toLowerCase();
+    if (clean) {
+      seen.add(escapeHtml(clean));
+    }
+  });
+
+  return Array.from(seen);
+}
+
 let tasks = [
   {
     id: 1,
@@ -14,6 +33,9 @@ let tasks = [
     description: "Complete Sprint 1 implementation",
     dueDate: null,
     status: "todo",
+    priority: "medium",
+    tags: [],
+    category: "",
     ownerId: null,
   },
   {
@@ -22,6 +44,9 @@ let tasks = [
     description: "",
     dueDate: null,
     status: "todo",
+    priority: "medium",
+    tags: [],
+    category: "",
     ownerId: null,
   },
   {
@@ -30,6 +55,9 @@ let tasks = [
     description: "",
     dueDate: null,
     status: "in-progress",
+    priority: "medium",
+    tags: [],
+    category: "",
     ownerId: null,
   },
 ];
@@ -42,6 +70,36 @@ function getAll(ownerId) {
   );
 }
 
+function getSummary(ownerId) {
+  const own = getAll(ownerId);
+  const now = Date.now();
+  const byStatus = { todo: 0, "in-progress": 0, completed: 0 };
+  const byPriority = { low: 0, medium: 0, high: 0 };
+  let overdue = 0;
+
+  own.forEach((task) => {
+    byStatus[task.status] += 1;
+    byPriority[task.priority] += 1;
+    if (
+      task.status !== "completed" &&
+      task.dueDate &&
+      new Date(task.dueDate).getTime() < now
+    ) {
+      overdue += 1;
+    }
+  });
+
+  return {
+    total: own.length,
+    byStatus,
+    byPriority,
+    overdue,
+    completionRate: own.length
+      ? Math.round((byStatus.completed / own.length) * 100)
+      : 0,
+  };
+}
+
 function getById(id) {
   return tasks.find((task) => task.id === id) || null;
 }
@@ -50,6 +108,9 @@ function create({
   title,
   description = "",
   dueDate = null,
+  priority = "medium",
+  tags = [],
+  category = "",
   ownerId,
 }) {
   const task = {
@@ -58,6 +119,9 @@ function create({
     description: escapeHtml(description),
     dueDate,
     status: "todo",
+    priority: PRIORITIES.includes(priority) ? priority : "medium",
+    tags: normalizeTags(tags),
+    category: escapeHtml(String(category).trim()),
     ownerId: Number(ownerId),
   };
 
@@ -92,6 +156,18 @@ function update(id, ownerId, changes) {
     task.status = changes.status;
   }
 
+  if (changes.priority !== undefined) {
+    task.priority = changes.priority;
+  }
+
+  if (changes.tags !== undefined) {
+    task.tags = normalizeTags(changes.tags);
+  }
+
+  if (changes.category !== undefined) {
+    task.category = escapeHtml(String(changes.category).trim());
+  }
+
   return task;
 }
 
@@ -112,6 +188,7 @@ function remove(id, ownerId) {
 
 module.exports = {
   getAll,
+  getSummary,
   getById,
   create,
   update,

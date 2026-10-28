@@ -27,6 +27,33 @@ const createTaskRules = [
     .withMessage("Due date must be a valid ISO 8601 date")
     .bail()
     .toDate(),
+
+  body("priority")
+    .optional()
+    .isIn(["low", "medium", "high"])
+    .withMessage("Priority must be low, medium, or high"),
+
+  body("tags")
+    .optional()
+    .isArray({ max: 10 })
+    .withMessage("Tags must be an array of at most 10 items"),
+
+  body("tags.*")
+    .isString()
+    .withMessage("Each tag must be a string")
+    .bail()
+    .trim()
+    .isLength({ max: 30 })
+    .withMessage("Each tag must be at most 30 characters"),
+
+  body("category")
+    .optional()
+    .isString()
+    .withMessage("Category must be a string")
+    .bail()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage("Category must be at most 50 characters"),
 ];
 
 const updateTaskRules = [
@@ -64,6 +91,33 @@ const updateTaskRules = [
     .withMessage(
       "Status must be todo, in-progress, or completed"
     ),
+
+  body("priority")
+    .optional()
+    .isIn(["low", "medium", "high"])
+    .withMessage("Priority must be low, medium, or high"),
+
+  body("tags")
+    .optional()
+    .isArray({ max: 10 })
+    .withMessage("Tags must be an array of at most 10 items"),
+
+  body("tags.*")
+    .isString()
+    .withMessage("Each tag must be a string")
+    .bail()
+    .trim()
+    .isLength({ max: 30 })
+    .withMessage("Each tag must be at most 30 characters"),
+
+  body("category")
+    .optional()
+    .isString()
+    .withMessage("Category must be a string")
+    .bail()
+    .trim()
+    .isLength({ max: 50 })
+    .withMessage("Category must be at most 50 characters"),
 ];
 
 module.exports = {

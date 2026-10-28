@@ -35,6 +35,49 @@ function createTaskRouter({ tasks }) {
     }
   });
 
+});
+
+// Dashboard summary for authenticated user
+router.get("/summary", (req, res) => {
+  return res.status(200).json({
+    status: "success",
+    data: taskStore.getSummary(req.user.id),
+  });
+});
+
+// Create task
+router.post(
+  "/",
+  createTaskRules,
+  validateRequest,
+  (req, res) => {
+    const task = taskStore.create({
+      title: req.body.title,
+      description: req.body.description || "",
+      dueDate: req.body.dueDate || null,
+      priority: req.body.priority,
+      tags: req.body.tags,
+      category: req.body.category,
+      ownerId: req.user.id,
+    });
+
+    return res.status(201).json({
+      status: "success",
+      message: "Task created successfully",
+      data: task,
+    });
+  }
+);
+
+// Edit task and manage task status
+router.patch(
+  "/:id",
+  updateTaskRules,
+  validateRequest,
+  (req, res) => {
+    const id = Number(req.params.id);
+
+
   router.post(
     "/",
     createTaskRules,
@@ -104,7 +147,29 @@ function createTaskRouter({ tasks }) {
       };
     }
 
+
+    const updatedTask = taskStore.update(
+      id,
+      req.user.id,
+      {
+        title: req.body.title,
+        description: req.body.description,
+        dueDate: req.body.dueDate,
+        status: req.body.status,
+        priority: req.body.priority,
+        tags: req.body.tags,
+        category: req.body.category,
+      }
+    );
+
+    return res.status(200).json({
+      status: "success",
+      message: "Task updated successfully",
+      data: updatedTask,
+    });
+
     return { status: 200, task: accessible };
+
   }
 
   router.patch(

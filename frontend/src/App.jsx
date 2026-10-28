@@ -17,9 +17,43 @@ async function apiRequest(path, options = {}) {
   return payload
 }
 
+const PRIORITIES = ['low', 'medium', 'high']
+const emptySummary = {
+  total: 0,
+  byStatus: { todo: 0, 'in-progress': 0, completed: 0 },
+  byPriority: { low: 0, medium: 0, high: 0 },
+  overdue: 0,
+  completionRate: 0,
+}
+
+function parseTags(value) {
+  return value.split(',').map((tag) => tag.trim()).filter(Boolean)
+}
+
+function DashboardSummary({ summary }) {
+  return (
+    <section className="summary-grid" aria-label="Task summary">
+      <div className="summary-card"><span>Total</span><strong>{summary.total}</strong></div>
+      <div className="summary-card"><span>To do</span><strong>{summary.byStatus.todo}</strong></div>
+      <div className="summary-card"><span>In progress</span><strong>{summary.byStatus['in-progress']}</strong></div>
+      <div className="summary-card"><span>Completed</span><strong>{summary.byStatus.completed}</strong></div>
+      <div className="summary-card warn"><span>Overdue</span><strong>{summary.overdue}</strong></div>
+      <div className="summary-card wide">
+        <span>Completion · {summary.completionRate}%</span>
+        <div className="progress-track" role="progressbar" aria-valuenow={summary.completionRate} aria-valuemin="0" aria-valuemax="100"><span style={{ width: `${summary.completionRate}%` }} /></div>
+        <small>High {summary.byPriority.high} · Medium {summary.byPriority.medium} · Low {summary.byPriority.low}</small>
+      </div>
+    </section>
+  )
+}
+
 function TaskWorkspace({ user, token, onLogout }) {
   const [tasks, setTasks] = useState([])
   const [title, setTitle] = useState('')
+  const [priority, setPriority] = useState('medium')
+  const [tagsInput, setTagsInput] = useState('')
+  const [category, setCategory] = useState('')
+  const [summary, setSummary] = useState(emptySummary)
   const [editingId, setEditingId] = useState(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [message, setMessage] = useState('')
@@ -35,6 +69,8 @@ function TaskWorkspace({ user, token, onLogout }) {
     try {
       const payload = await authorizedRequest('/api/tasks')
       setTasks(payload.data)
+      const summaryPayload = await authorizedRequest('/api/tasks/summary')
+      setSummary(summaryPayload.data)
       setError('')
     } catch (requestError) {
       setError(requestError.message)
@@ -44,9 +80,10 @@ function TaskWorkspace({ user, token, onLogout }) {
   }, [authorizedRequest])
 
   useEffect(() => {
-    authorizedRequest('/api/tasks')
-      .then((payload) => {
-        setTasks(payload.data)
+    Promise.all([authorizedRequest('/api/tasks'), authorizedRequest('/api/tasks/summary')])
+      .then(([taskPayload, summaryPayload]) => {
+        setTasks(taskPayload.data)
+        setSummary(summaryPayload.data)
         setError('')
       })
       .catch((requestError) => setError(requestError.message))
@@ -59,9 +96,12 @@ function TaskWorkspace({ user, token, onLogout }) {
     try {
       await authorizedRequest('/api/tasks', {
         method: 'POST',
-        body: JSON.stringify({ title: title.trim() }),
+        body: JSON.stringify({ title: title.trim(), priority, tags: parseTags(tagsInput), category: category.trim() }),
       })
       setTitle('')
+      setPriority('medium')
+      setTagsInput('')
+      setCategory('')
       setMessage('Task created successfully.')
       await loadTasks()
     } catch (requestError) {
@@ -78,6 +118,19 @@ function TaskWorkspace({ user, token, onLogout }) {
       })
       setEditingId(null)
       setMessage('Task updated successfully.')
+      await loadTasks()
+    } catch (requestError) {
+      setError(requestError.message)
+    }
+  }
+
+  async function changePriority(taskId, nextPriority) {
+    try {
+      await authorizedRequest(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ priority: nextPriority }),
+      })
+      setMessage('Priority updated.')
       await loadTasks()
     } catch (requestError) {
       setError(requestError.message)
@@ -113,9 +166,16 @@ function TaskWorkspace({ user, token, onLogout }) {
           <span className="task-count">{tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}</span>
         </div>
 
+        <DashboardSummary summary={summary} />
+
         <form className="task-form" onSubmit={addTask}>
           <label htmlFor="new-task">Add a task</label>
           <div><input id="new-task" value={title} onChange={(event) => setTitle(event.target.value)} placeholder="What needs to be done?" maxLength="200" required /><button className="primary-button" type="submit">Add task</button></div>
+          <div className="task-meta-fields">
+            <label>Priority<select value={priority} onChange={(event) => setPriority(event.target.value)}>{PRIORITIES.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+            <label>Category<input value={category} onChange={(event) => setCategory(event.target.value)} placeholder="e.g. College" maxLength="50" /></label>
+            <label>Tags (comma separated)<input value={tagsInput} onChange={(event) => setTagsInput(event.target.value)} placeholder="e.g. exam, urgent" /></label>
+          </div>
         </form>
 
         {message && <p className="message success" role="status">{message}</p>}
@@ -128,13 +188,21 @@ function TaskWorkspace({ user, token, onLogout }) {
                 {editingId === task.id ? (
                   <input className="edit-input" value={editingTitle} onChange={(event) => setEditingTitle(event.target.value)} maxLength="200" autoFocus />
                 ) : (
-                  <div className="task-copy"><strong>{task.title}</strong><span>{task.status}</span></div>
+                  <div className="task-copy">
+                    <strong>{task.title}</strong>
+                    <span>{task.status}</span>
+                    <div className="chips">
+                      <em className={`chip priority-${task.priority}`}>{task.priority}</em>
+                      {task.category && <em className="chip category">{task.category}</em>}
+                      {(task.tags || []).map((tag) => <em key={tag} className="chip tag">#{tag}</em>)}
+                    </div>
+                  </div>
                 )}
                 <div className="task-actions">
                   {editingId === task.id ? (
                     <><button type="button" onClick={() => saveTask(task.id)}>Save</button><button type="button" onClick={() => setEditingId(null)}>Cancel</button></>
                   ) : (
-                    <><button type="button" onClick={() => { setEditingId(task.id); setEditingTitle(task.title) }}>Edit</button><button className="danger-button" type="button" onClick={() => deleteTask(task.id)}>Delete</button></>
+                    <><select aria-label="Change priority" value={task.priority} onChange={(event) => changePriority(task.id, event.target.value)}>{PRIORITIES.map((item) => <option key={item} value={item}>{item}</option>)}</select><button type="button" onClick={() => { setEditingId(task.id); setEditingTitle(task.title) }}>Edit</button><button className="danger-button" type="button" onClick={() => deleteTask(task.id)}>Delete</button></>
                   )}
                 </div>
               </li>
