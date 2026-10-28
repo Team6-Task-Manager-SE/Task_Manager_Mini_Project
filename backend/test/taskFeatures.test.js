@@ -1,4 +1,4 @@
-const { test } = require("node:test");
+﻿const { test, after } = require("node:test");
 const assert = require("node:assert/strict");
 const request = require("supertest");
 
@@ -6,6 +6,25 @@ process.env.JWT_SECRET = "test-only-secret-do-not-use-in-production";
 
 const { createAccessToken } = require("../src/services/tokenService");
 const app = require("../src/app");
+const pool = require("../src/config/database");
+
+async function ensureTestUser(id) {
+  await pool.query(
+    `INSERT INTO users (id, name, email, password_hash)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (id) DO NOTHING`,
+    [
+      id,
+      `Feature Test User ${id}`,
+      `user${id}@example.test`,
+      "test-only-not-a-real-password",
+    ]
+  );
+}
+
+after(async () => {
+  await pool.end();
+});
 
 const auth = (id) => ({
   Authorization: `Bearer ${createAccessToken({
@@ -15,8 +34,14 @@ const auth = (id) => ({
   })}`,
 });
 
-const create = (id, body) =>
-  request(app).post("/api/tasks").set(auth(id)).send(body);
+const create = async (id, body) => {
+  await ensureTestUser(id);
+
+  return request(app)
+    .post("/api/tasks")
+    .set(auth(id))
+    .send(body);
+};
 
 // #9 Priority
 test("new task defaults to medium priority", async () => {
@@ -63,17 +88,31 @@ test("tags are HTML-escaped and validated", async () => {
   assert.equal(bad.status, 400);
 });
 
+
 // #11 Dashboard summary
+// Use fresh IDs on each run so old test data cannot affect summary counts.
+const summaryUserBase = 1500000000 + (Date.now() % 100000000);
+
 test("summary counts only the user's own tasks", async () => {
-  const a = await create(92006, { title: "A", priority: "high" });
-  await create(92006, { title: "B" });
-  await create(92007, { title: "Someone else's" });
+  const userA = summaryUserBase;
+  const userB = summaryUserBase + 1;
+
+  const a = await create(userA, {
+    title: "A",
+    priority: "high",
+  });
+  await create(userA, { title: "B" });
+  await create(userB, { title: "Someone else's" });
+
   await request(app)
     .patch(`/api/tasks/${a.body.data.id}`)
-    .set(auth(92006))
+    .set(auth(userA))
     .send({ status: "completed" });
 
-  const res = await request(app).get("/api/tasks/summary").set(auth(92006));
+  const res = await request(app)
+    .get("/api/tasks/summary")
+    .set(auth(userA));
+
   assert.equal(res.status, 200);
   assert.equal(res.body.data.total, 2);
   assert.equal(res.body.data.byStatus.completed, 1);
@@ -82,8 +121,18 @@ test("summary counts only the user's own tasks", async () => {
 });
 
 test("summary counts overdue tasks and needs auth", async () => {
-  await create(92008, { title: "Late", dueDate: "2020-01-01" });
-  const res = await request(app).get("/api/tasks/summary").set(auth(92008));
+  const user = summaryUserBase + 2;
+
+  await create(user, {
+    title: "Late",
+    dueDate: "2020-01-01",
+  });
+
+  const res = await request(app)
+    .get("/api/tasks/summary")
+    .set(auth(user));
+
+  assert.equal(res.status, 200);
   assert.equal(res.body.data.overdue, 1);
 
   const noAuth = await request(app).get("/api/tasks/summary");
