@@ -8,10 +8,12 @@ const { createAuthService } = require("./services/authService");
 const createEmailService = require("./services/emailService");
 const createAuthController = require("./controllers/authController");
 const createAuthRouter = require("./routes/authRoutes");
-const taskRoutes = require("./routes/taskRoutes");
+const { createTaskRepository } = require("./repositories/taskRepository");
+const createTaskRouter = require("./routes/taskRoutes");
 
 function createApp(dependencies = {}) {
   const database = dependencies.pool || pool;
+  const tasks = dependencies.tasks || createTaskRepository(database);
   const cache = dependencies.redisClient || redisClient;
   const users = dependencies.users || createUserRepository(database);
   const emailService = dependencies.emailService || createEmailService();
@@ -36,8 +38,7 @@ function createApp(dependencies = {}) {
   });
 
   app.use("/api/auth", createAuthRouter({ controller: authController, redisClient: cache }));
-  app.use("/api/tasks", taskRoutes);
-
+  app.use("/api/tasks", createTaskRouter({ tasks }));
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
     const statusCode = error.statusCode || 500;
