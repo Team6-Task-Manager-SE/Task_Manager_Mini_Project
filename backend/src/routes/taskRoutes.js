@@ -36,6 +36,14 @@ router.get("/", (req, res) => {
   });
 });
 
+// Dashboard summary for authenticated user
+router.get("/summary", (req, res) => {
+  return res.status(200).json({
+    status: "success",
+    data: taskStore.getSummary(req.user.id),
+  });
+});
+
 // Create task
 router.post(
   "/",
@@ -46,6 +54,9 @@ router.post(
       title: req.body.title,
       description: req.body.description || "",
       dueDate: req.body.dueDate || null,
+      priority: req.body.priority,
+      tags: req.body.tags,
+      category: req.body.category,
       ownerId: req.user.id,
     });
 
@@ -96,6 +107,9 @@ router.patch(
         description: req.body.description,
         dueDate: req.body.dueDate,
         status: req.body.status,
+        priority: req.body.priority,
+        tags: req.body.tags,
+        category: req.body.category,
       }
     );
 
