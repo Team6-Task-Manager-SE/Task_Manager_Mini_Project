@@ -3,10 +3,16 @@ require("dotenv").config();
 
 const fs = require("node:fs");
 const https = require("node:https");
+const http = require("node:http");
+
 const app = require("./app");
 const pool = require("./config/database");
 const redisClient = require("./config/redis");
 const runMigrations = require("./scripts/migrate");
+
+const {
+  startNotificationScheduler,
+} = require("./workers/notificationScheduler");
 
 const PORT = Number(process.env.PORT || 5000);
 const isProduction = process.env.NODE_ENV === "production";
@@ -32,43 +38,85 @@ function createHttpsServer() {
 }
 
 async function start() {
-  // Production must never expose this application over plain HTTP.
+  // Production must use encrypted database connections.
   if (isProduction && process.env.DB_SSL !== "true") {
     throw new Error("Production requires DB_SSL=true");
   }
 
+  // Apply pending database migrations.
   await runMigrations(pool);
 
+  // Connect Redis if it is not already connected.
   if (!redisClient.isOpen) {
     await redisClient.connect();
   }
 
   let server;
 
-  if (isProduction || process.env.HTTPS_KEY_PATH || process.env.HTTPS_CERT_PATH) {
+  const useHttps =
+    isProduction ||
+    Boolean(process.env.HTTPS_KEY_PATH) ||
+    Boolean(process.env.HTTPS_CERT_PATH);
+
+  if (useHttps) {
     server = createHttpsServer();
   } else {
-    // HTTP is for local development only.
-    server = require("node:http").createServer(app);
+    server = http.createServer(app);
   }
 
+  let stopNotificationScheduler = () => {};
+
+  // Start backend server.
   server.listen(PORT, () => {
     console.log(
-      `Task Manager backend running on ${isProduction || process.env.HTTPS_KEY_PATH || process.env.HTTPS_CERT_PATH ? "HTTPS" : "HTTP"} port ${PORT}`
+      `Task Manager backend running on ${
+        useHttps ? "HTTPS" : "HTTP"
+      } port ${PORT}`
     );
+
+    // Start the notification scheduler after the server starts.
+    stopNotificationScheduler =
+      startNotificationScheduler(pool);
   });
 
+  let shuttingDown = false;
+
   async function shutdown() {
-    server.close(async () => {
-      try {
-        if (redisClient.isOpen) await redisClient.quit();
-        await pool.end();
-        process.exit(0);
-      } catch (error) {
-        console.error("Shutdown failed:", error);
-        process.exit(1);
+    if (shuttingDown) {
+      return;
+    }
+
+    shuttingDown = true;
+
+    console.log("Shutting down Task Manager backend...");
+
+    // Stop creating new notification checks.
+    stopNotificationScheduler();
+
+    try {
+      // Stop accepting new HTTP requests.
+      await new Promise((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      if (redisClient.isOpen) {
+        await redisClient.quit();
       }
-    });
+
+      await pool.end();
+
+      console.log("Backend shutdown completed.");
+      process.exit(0);
+    } catch (error) {
+      console.error("Shutdown failed:", error);
+      process.exit(1);
+    }
   }
 
   process.on("SIGINT", shutdown);
