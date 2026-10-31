@@ -10,6 +10,7 @@ const createAuthController = require("./controllers/authController");
 const createAuthRouter = require("./routes/authRoutes");
 const { createTaskRepository } = require("./repositories/taskRepository");
 const createTaskRouter = require("./routes/taskRoutes");
+const createNotificationRouter = require("./routes/notificationRoutes");
 
 function createApp(dependencies = {}) {
   const database = dependencies.pool || pool;
@@ -39,6 +40,10 @@ function createApp(dependencies = {}) {
 
   app.use("/api/auth", createAuthRouter({ controller: authController, redisClient: cache }));
   app.use("/api/tasks", createTaskRouter({ tasks }));
+  app.use(
+    "/api/notifications",
+    createNotificationRouter({ pool: database })
+  );
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
     const statusCode = error.statusCode || 500;
