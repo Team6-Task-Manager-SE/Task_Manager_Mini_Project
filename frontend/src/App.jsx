@@ -1,9 +1,13 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import NotificationsPanel from './components/NotificationsPanel'
+import WeeklyReport from './components/WeeklyReport'
 import './App.css'
 
-const initialLogin = { email: '', password: '' }
+const initialLogin = {
+  email: '',
+  password: '',
+}
 
 const initialRegistration = {
   name: '',
@@ -63,9 +67,13 @@ function parseTags(value) {
     .filter(Boolean)
 }
 
+// Sprint 1 - Task Dashboard
 function DashboardSummary({ summary }) {
   return (
-    <section className="summary-grid" aria-label="Task summary">
+    <section
+      className="summary-grid"
+      aria-label="Task summary"
+    >
       <div className="summary-card">
         <span>Total</span>
         <strong>{summary.total}</strong>
@@ -104,7 +112,9 @@ function DashboardSummary({ summary }) {
           aria-valuemax="100"
         >
           <span
-            style={{ width: `${summary.completionRate}%` }}
+            style={{
+              width: `${summary.completionRate}%`,
+            }}
           />
         </div>
 
@@ -118,6 +128,7 @@ function DashboardSummary({ summary }) {
   )
 }
 
+// Main Task Manager Workspace
 function TaskWorkspace({ user, token, onLogout }) {
   const [tasks, setTasks] = useState([])
   const [title, setTitle] = useState('')
@@ -163,8 +174,7 @@ function TaskWorkspace({ user, token, onLogout }) {
     }
   }, [authorizedRequest])
 
-  // Schedule initial loading after the effect.
-  // This avoids the React ESLint set-state-in-effect error.
+  // Schedule initial loading asynchronously for React Hooks lint.
   useEffect(() => {
     const timer = setTimeout(() => {
       void loadTasks()
@@ -237,6 +247,7 @@ function TaskWorkspace({ user, token, onLogout }) {
       })
 
       setMessage('Priority updated.')
+
       await loadTasks()
     } catch (requestError) {
       setError(requestError.message)
@@ -252,6 +263,7 @@ function TaskWorkspace({ user, token, onLogout }) {
       })
 
       setMessage('Task deleted successfully.')
+
       await loadTasks()
     } catch (requestError) {
       setError(requestError.message)
@@ -266,9 +278,13 @@ function TaskWorkspace({ user, token, onLogout }) {
           href="/"
           aria-label="Task Manager home"
         >
-          <span className="brand-mark" aria-hidden="true">
+          <span
+            className="brand-mark"
+            aria-hidden="true"
+          >
             ✓
           </span>
+
           <span>Task Manager</span>
         </a>
 
@@ -290,7 +306,10 @@ function TaskWorkspace({ user, token, onLogout }) {
       <section className="workspace-card">
         <div className="workspace-heading">
           <div>
-            <p className="eyebrow">MY WORKSPACE</p>
+            <p className="eyebrow">
+              MY WORKSPACE
+            </p>
+
             <h1>Your tasks</h1>
           </div>
 
@@ -300,13 +319,23 @@ function TaskWorkspace({ user, token, onLogout }) {
           </span>
         </div>
 
+        {/* Sprint 1 - Dashboard Summary */}
         <DashboardSummary summary={summary} />
 
-        {/* Sprint 2: Only one notification panel */}
+        {/* Sprint 2 Issue #25 - Weekly Productivity Report */}
+        <WeeklyReport token={token} />
+
+        {/* Sprint 2 Issue #19 - Due-Date Notifications */}
         <NotificationsPanel token={token} />
 
-        <form className="task-form" onSubmit={addTask}>
-          <label htmlFor="new-task">Add a task</label>
+        {/* Sprint 1 - Task Creation */}
+        <form
+          className="task-form"
+          onSubmit={addTask}
+        >
+          <label htmlFor="new-task">
+            Add a task
+          </label>
 
           <div>
             <input
@@ -331,6 +360,7 @@ function TaskWorkspace({ user, token, onLogout }) {
           <div className="task-meta-fields">
             <label>
               Priority
+
               <select
                 value={priority}
                 onChange={(event) =>
@@ -338,7 +368,10 @@ function TaskWorkspace({ user, token, onLogout }) {
                 }
               >
                 {PRIORITIES.map((item) => (
-                  <option key={item} value={item}>
+                  <option
+                    key={item}
+                    value={item}
+                  >
                     {item}
                   </option>
                 ))}
@@ -347,6 +380,7 @@ function TaskWorkspace({ user, token, onLogout }) {
 
             <label>
               Category
+
               <input
                 value={category}
                 onChange={(event) =>
@@ -359,6 +393,7 @@ function TaskWorkspace({ user, token, onLogout }) {
 
             <label>
               Tags (comma separated)
+
               <input
                 value={tagsInput}
                 onChange={(event) =>
@@ -371,17 +406,24 @@ function TaskWorkspace({ user, token, onLogout }) {
         </form>
 
         {message && (
-          <p className="message success" role="status">
+          <p
+            className="message success"
+            role="status"
+          >
             {message}
           </p>
         )}
 
         {error && (
-          <p className="message error" role="alert">
+          <p
+            className="message error"
+            role="alert"
+          >
             {error}
           </p>
         )}
 
+        {/* Sprint 1 - Task List */}
         {loading ? (
           <p className="empty-state">
             Loading your tasks…
@@ -402,8 +444,13 @@ function TaskWorkspace({ user, token, onLogout }) {
                   />
                 ) : (
                   <div className="task-copy">
-                    <strong>{task.title}</strong>
-                    <span>{task.status}</span>
+                    <strong>
+                      {task.title}
+                    </strong>
+
+                    <span>
+                      {task.status}
+                    </span>
 
                     <div className="chips">
                       <em
@@ -510,6 +557,7 @@ function TaskWorkspace({ user, token, onLogout }) {
   )
 }
 
+// Login and Registration
 function App() {
   const [mode, setMode] = useState('login')
   const [login, setLogin] = useState(initialLogin)
@@ -527,9 +575,10 @@ function App() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    const confirmationToken = new URLSearchParams(
-      window.location.search
-    ).get('confirm')
+    const confirmationToken =
+      new URLSearchParams(
+        window.location.search
+      ).get('confirm')
 
     if (confirmationToken) {
       apiRequest(
@@ -691,7 +740,9 @@ function App() {
             FOCUS ON WHAT MATTERS
           </p>
 
-          <h1>Turn plans into progress.</h1>
+          <h1>
+            Turn plans into progress.
+          </h1>
 
           <p className="lede">
             Organize your work, keep priorities
@@ -705,7 +756,10 @@ function App() {
           aria-hidden="true"
         >
           <div className="progress-heading">
-            <span>Today&apos;s progress</span>
+            <span>
+              Today&apos;s progress
+            </span>
+
             <strong>68%</strong>
           </div>
 
@@ -714,18 +768,26 @@ function App() {
           </div>
 
           <div className="task-preview">
-            <span className="check">✓</span>
-            <span>Plan weekly sprint</span>
+            <span className="check">
+              ✓
+            </span>
+            <span>
+              Plan weekly sprint
+            </span>
           </div>
 
           <div className="task-preview">
             <span className="check active" />
-            <span>Review design system</span>
+            <span>
+              Review design system
+            </span>
           </div>
 
           <div className="task-preview muted">
             <span className="check active" />
-            <span>Ship authentication</span>
+            <span>
+              Ship authentication
+            </span>
           </div>
         </div>
 
@@ -761,7 +823,9 @@ function App() {
           >
             <button
               className={
-                mode === 'login' ? 'active' : ''
+                mode === 'login'
+                  ? 'active'
+                  : ''
               }
               type="button"
               onClick={() =>
@@ -773,7 +837,9 @@ function App() {
 
             <button
               className={
-                mode === 'register' ? 'active' : ''
+                mode === 'register'
+                  ? 'active'
+                  : ''
               }
               type="button"
               onClick={() =>
@@ -919,7 +985,8 @@ function App() {
                   onChange={(event) =>
                     setRegistration({
                       ...registration,
-                      confirmPassword: event.target.value,
+                      confirmPassword:
+                        event.target.value,
                     })
                   }
                   placeholder="Repeat your password"
@@ -941,7 +1008,10 @@ function App() {
           )}
 
           <p className="security-note">
-            <span aria-hidden="true">◆</span>
+            <span aria-hidden="true">
+              ◆
+            </span>
+
             Passwords are hashed and never
             stored in plain text.
           </p>
