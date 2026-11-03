@@ -1,28 +1,68 @@
 
 const {
-    generateDueDateNotifications,
-  } = require("./dueDateNotificationWorker");
+  generateDueDateNotifications,
+} = require("./dueDateNotificationWorker");
 
-  function startNotificationScheduler(pool) {
-    async function checkDueDates() {
-      try {
-        const count = await generateDueDateNotifications(pool);
+const {
+  processOverdueEmailReminders,
+} = require("./overdueEmailWorker");
 
-        console.log(
-          `Notification check complete: ${count} new reminder(s).`
-        );
-      } catch (error) {
-        console.error("Notification scheduler error:", error);
-      }
+function startNotificationScheduler(pool, options = {}) {
+  const intervalMs = options.intervalMs || 5 * 60 * 1000;
+
+  const overdueEmailService = options.emailService;
+
+  let running = false;
+  let stopped = false;
+
+  async function checkNotifications() {
+    if (running || stopped) {
+      return;
     }
 
-    // Check immediately when the backend starts.
-    void checkDueDates();
+    running = true;
 
-    // Check every five minutes.
-    const timer = setInterval(checkDueDates, 5 * 60 * 1000);
+    try {
+      const count = await generateDueDateNotifications(pool);
 
-    return () => clearInterval(timer);
+      console.log(
+        `Notification check complete: ${count} new reminder(s).`
+      );
+    } catch (error) {
+      console.error("Notification scheduler error:", error);
+    }
+
+    try {
+      const result = overdueEmailService
+        ? await processOverdueEmailReminders(
+            pool,
+            overdueEmailService
+          )
+        : await processOverdueEmailReminders(pool);
+
+      console.log(
+        "Overdue email check complete:",
+        result
+      );
+    } catch (error) {
+      console.error("Overdue email scheduler error:", error);
+    } finally {
+      running = false;
+    }
   }
 
-  module.exports = { startNotificationScheduler };
+  // Run when the backend starts.
+  void checkNotifications();
+
+  // Repeat every five minutes.
+  const timer = setInterval(() => {
+    void checkNotifications();
+  }, intervalMs);
+
+  return function stopNotificationScheduler() {
+    stopped = true;
+    clearInterval(timer);
+  };
+}
+
+module.exports = { startNotificationScheduler };
