@@ -37,6 +37,17 @@ const {
 
 const createWeeklyReportRouter = require("./routes/weeklyReportRoutes");
 
+// Sprint 2 Issue #22 - Team Member Invitations (F-040)
+const {
+  createProjectInvitationRepository,
+} = require("./repositories/projectInvitationRepository");
+
+const {
+  createProjectInvitationService,
+} = require("./services/projectInvitationService");
+
+const createProjectInvitationRouter = require("./routes/projectInvitationRoutes");
+
 function createApp(dependencies = {}) {
   // Database and external services
   const database = dependencies.pool || pool;
@@ -53,10 +64,16 @@ function createApp(dependencies = {}) {
     dependencies.reports ||
     createWeeklyReportRepository(database);
 
-  // Authentication services
+  // F-040 Invitation Repository
+  const invitations =
+    dependencies.invitations ||
+    createProjectInvitationRepository(database);
+
+  // Email Service
   const emailService =
     dependencies.emailService || createEmailService();
 
+  // Authentication Service
   const authService =
     dependencies.authService ||
     createAuthService({
@@ -68,6 +85,14 @@ function createApp(dependencies = {}) {
     authService,
     users,
   });
+
+  // F-040 Invitation Service
+  const invitationService =
+    dependencies.invitationService ||
+    createProjectInvitationService({
+      invitationRepository: invitations,
+      emailService,
+    });
 
   // Initialize Express
   const app = express();
@@ -136,6 +161,14 @@ function createApp(dependencies = {}) {
     "/api/reports",
     createWeeklyReportRouter({
       reports,
+    })
+  );
+
+  // F-040 Team Member Invitations API
+  app.use(
+    "/api/v1",
+    createProjectInvitationRouter({
+      invitationService,
     })
   );
 
