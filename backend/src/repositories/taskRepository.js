@@ -136,12 +136,27 @@ function createTaskRepository(pool) {
     return result.rowCount > 0;
   }
 
+  async function isProjectMember(projectId, userId) {
+    const result = await pool.query(
+      `SELECT 1
+         FROM projects p
+         LEFT JOIN project_members pm
+           ON pm.project_id = p.id AND pm.user_id = $2
+        WHERE p.id = $1
+          AND (p.owner_id = $2 OR pm.user_id = $2)
+        LIMIT 1`,
+      [projectId, userId]
+    );
+    return result.rowCount > 0;
+  }
+
   async function create({
     title,
     description = "",
     dueDate = null,
     ownerId,
     projectId = null,
+    assigneeId = null,
     priority = "medium",
     tags = [],
     category = null,
@@ -149,9 +164,9 @@ function createTaskRepository(pool) {
     const result = await pool.query(
       `INSERT INTO tasks (
          title, description, due_at, owner_id, project_id,
-         priority, tags, category
+         assignee_id, priority, tags, category
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING ${taskColumns}`,
       [
         title,
@@ -159,6 +174,7 @@ function createTaskRepository(pool) {
         dueDate,
         ownerId,
         projectId,
+        assigneeId,
         priority,
         normalizeTags(tags),
         category,
@@ -177,6 +193,7 @@ function createTaskRepository(pool) {
       priority: "priority",
       tags: "tags",
       category: "category",
+      assigneeId: "assignee_id",
     };
 
     const entries = Object.entries(changes).filter(
@@ -293,6 +310,7 @@ function createTaskRepository(pool) {
     updateForUser,
     deleteForUser,
     getSummaryForUser,
+    isProjectMember,
   };
 }
 

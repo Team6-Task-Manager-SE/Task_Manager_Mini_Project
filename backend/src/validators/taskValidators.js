@@ -54,6 +54,11 @@ const createTaskRules = [
     .trim()
     .isLength({ max: 50 })
     .withMessage("Category must be at most 50 characters"),
+
+  body("assigneeId")
+  .optional({ nullable: true })
+  .isInt({ min: 1 })
+  .withMessage("Assignee ID must be a positive integer"),
 ];
 
 const updateTaskRules = [

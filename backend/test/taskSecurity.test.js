@@ -15,6 +15,7 @@ function escapeHtml(value = "") {
 }
 
 
+
 function createMockTasks() {
   let nextId = 1;
   const taskData = [];
@@ -36,6 +37,10 @@ function createMockTasks() {
       project.ownerId === id ||
       project.memberIds.includes(id)
     );
+  }
+
+  function isProjectMember(projectId, userId) {
+    return canAccessProject(projectId, userId);
   }
 
   function canAccess(task, userId) {
@@ -90,12 +95,17 @@ function createMockTasks() {
       return canAccessProject(projectId, userId);
     },
 
+    async isProjectMember(projectId, userId) {
+      return isProjectMember(projectId, userId);
+    },
+
     async create({
       title,
       description = "",
       dueDate = null,
       ownerId,
       projectId = null,
+      assigneeId = null,
     }) {
       const task = {
         id: nextId++,
@@ -104,6 +114,8 @@ function createMockTasks() {
         dueDate,
         ownerId: Number(ownerId),
         projectId: projectId === null ? null : Number(projectId),
+        assigneeId:
+          assigneeId === null ? null : Number(assigneeId),
         status: "todo",
         memberIds: [],
       };
@@ -135,6 +147,13 @@ function createMockTasks() {
 
       if (changes.status !== undefined) {
         task.status = changes.status;
+      }
+
+      if (changes.assigneeId !== undefined) {
+        task.assigneeId =
+          changes.assigneeId === null
+            ? null
+            : Number(changes.assigneeId);
       }
 
       return publicTask(task);
@@ -427,7 +446,6 @@ test("a user cannot forge task ownership during creation", async () => {
     .send({
       title: "Ownership protection test",
       ownerId: 92002,
-      assigneeId: 92002,
     });
 
   assert.equal(response.status, 201);
@@ -484,4 +502,84 @@ test("a non-member cannot create a task in someone else's project", async () => 
     });
 
   assert.equal(response.status, 403);
+});
+test("a project member can assign a task to another project member", async () => {
+  mockTasks.addProject({
+    id: 94001,
+    ownerId: 94002,
+    memberIds: [94003, 94004],
+  });
+
+  const created = await request(app)
+    .post("/api/tasks")
+    .set("Authorization", `Bearer ${tokenFor(94003)}`)
+    .send({
+      title: "Assigned project task",
+      projectId: 94001,
+      assigneeId: 94004,
+    });
+
+  assert.equal(created.status, 201);
+  assert.equal(Number(created.body.data.assigneeId), 94004);
+});
+
+test("an assigned project member can see the task in their task list", async () => {
+  mockTasks.addProject({
+    id: 94005,
+    ownerId: 94006,
+    memberIds: [94007, 94008],
+  });
+
+  const created = await request(app)
+    .post("/api/tasks")
+    .set("Authorization", `Bearer ${tokenFor(94007)}`)
+    .send({
+      title: "Task visible to assignee",
+      projectId: 94005,
+      assigneeId: 94008,
+    });
+
+  assert.equal(created.status, 201);
+
+  const listed = await request(app)
+    .get("/api/tasks")
+    .set("Authorization", `Bearer ${tokenFor(94008)}`);
+
+  assert.equal(listed.status, 200);
+  assert.ok(
+    listed.body.data.some(
+      (task) => task.id === created.body.data.id
+    )
+  );
+});
+
+test("a project task cannot be assigned to a non-member", async () => {
+  mockTasks.addProject({
+    id: 94009,
+    ownerId: 94010,
+    memberIds: [94011],
+  });
+
+  const response = await request(app)
+    .post("/api/tasks")
+    .set("Authorization", `Bearer ${tokenFor(94011)}`)
+    .send({
+      title: "Invalid assignment",
+      projectId: 94009,
+      assigneeId: 94012,
+    });
+
+  assert.equal(response.status, 403);
+});
+
+test("a task without a project cannot be assigned", async () => {
+  const response = await request(app)
+    .post("/api/tasks")
+    .set("Authorization", `Bearer ${tokenFor(94013)}`)
+    .send({
+      title: "Assignment without project",
+      assigneeId: 94014,
+    });
+
+  assert.equal(response.status, 400);
 });

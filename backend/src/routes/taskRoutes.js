@@ -44,60 +44,92 @@ function createTaskRouter({ tasks }) {
   });
 
   router.post(
-    "/",
-    createTaskRules,
-    validateRequest,
-    async (req, res, next) => {
-      try {
-        const projectId = req.body.projectId ?? null;
+  "/",
+  createTaskRules,
+  validateRequest,
+  async (req, res, next) => {
+    try {
+      const projectId =
+        req.body.projectId == null ? null : Number(req.body.projectId);
 
-        if (projectId !== null) {
-          const parsedProjectId = Number(projectId);
+      const assigneeId =
+        req.body.assigneeId == null ? null : Number(req.body.assigneeId);
 
-          if (
-            !Number.isSafeInteger(parsedProjectId) ||
-            parsedProjectId <= 0
-          ) {
-            return res.status(400).json({
-              status: "error",
-              message: "Invalid project id",
-            });
-          }
+      if (
+        projectId !== null &&
+        (!Number.isSafeInteger(projectId) || projectId <= 0)
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid project id",
+        });
+      }
 
-          const allowed = await tasks.canAccessProject(
-            parsedProjectId,
-            req.user.id
-          );
+      if (
+        assigneeId !== null &&
+        (!Number.isSafeInteger(assigneeId) || assigneeId <= 0)
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid assignee id",
+        });
+      }
 
-          if (!allowed) {
-            return res.status(403).json({
-              status: "error",
-              message: "You are not allowed to access this project",
-            });
-          }
+      if (projectId !== null) {
+        const allowed = await tasks.canAccessProject(
+          projectId,
+          req.user.id
+        );
+
+        if (!allowed) {
+          return res.status(403).json({
+            status: "error",
+            message: "You are not allowed to access this project",
+          });
+        }
+      }
+
+      if (assigneeId !== null) {
+        if (projectId === null) {
+          return res.status(400).json({
+            status: "error",
+            message: "Tasks must belong to a project to be assigned",
+          });
         }
 
-        const data = await tasks.create({
-          title: req.body.title,
-          description: req.body.description || "",
-          dueDate: req.body.dueDate || null,
-          ownerId: req.user.id,
-          projectId: projectId === null ? null : Number(projectId),
-          priority: req.body.priority,
-          tags: req.body.tags,
-          category: req.body.category,
-        });
+        const isMember = await tasks.isProjectMember(
+          projectId,
+          assigneeId
+        );
 
-        return res.status(201).json({
-          status: "success",
-          message: "Task created successfully",
-          data,
-        });
-      } catch (error) {
-        next(error);
+        if (!isMember) {
+          return res.status(403).json({
+            status: "error",
+            message: "Assignee must be a member of this project",
+          });
+        }
       }
-    }
-  );
+
+      const data = await tasks.create({
+        title: req.body.title,
+        description: req.body.description || "",
+        dueDate: req.body.dueDate || null,
+        ownerId: req.user.id,
+        projectId,
+        assigneeId,
+        priority: req.body.priority,
+        tags: req.body.tags,
+        category: req.body.category,
+      });
+
+      return res.status(201).json({
+        status: "success",
+        message: "Task created successfully",
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }});
 
   async function checkTaskAccess(taskId, userId) {
     const task = await tasks.getById(taskId);
@@ -119,56 +151,105 @@ function createTaskRouter({ tasks }) {
   }
 
   router.patch(
-    "/:id",
-    updateTaskRules,
-    validateRequest,
-    async (req, res, next) => {
-      try {
-        const id = Number(req.params.id);
+  "/:id",
+  updateTaskRules,
+  validateRequest,
+  async (req, res, next) => {
+    try {
+      const id = Number(req.params.id);
 
-        if (!Number.isSafeInteger(id) || id <= 0) {
-          return res.status(400).json({
-            status: "error",
-            message: "Invalid task id",
-          });
-        }
-
-        const access = await checkTaskAccess(id, req.user.id);
-
-        if (access.status !== 200) {
-          return res.status(access.status).json({
-            status: "error",
-            message: access.message,
-          });
-        }
-
-        const updated = await tasks.updateForUser(id, req.user.id, {
-          title: req.body.title,
-          description: req.body.description,
-          dueDate: req.body.dueDate,
-          status: req.body.status,
-          priority: req.body.priority,
-          tags: req.body.tags,
-          category: req.body.category,
+      if (!Number.isSafeInteger(id) || id <= 0) {
+        return res.status(400).json({
+          status: "error",
+          message: "Invalid task id",
         });
-
-        if (!updated) {
-          return res.status(404).json({
-            status: "error",
-            message: "Task not found",
-          });
-        }
-
-        return res.status(200).json({
-          status: "success",
-          message: "Task updated successfully",
-          data: updated,
-        });
-      } catch (error) {
-        next(error);
       }
-    }
-  );
+
+      const access = await checkTaskAccess(id, req.user.id);
+
+      if (access.status !== 200) {
+        return res.status(access.status).json({
+          status: "error",
+          message: access.message,
+        });
+      }
+
+      const updateData = {
+        title: req.body.title,
+        description: req.body.description,
+        dueDate: req.body.dueDate,
+        status: req.body.status,
+        priority: req.body.priority,
+        tags: req.body.tags,
+        category: req.body.category,
+      };
+
+      if (
+        Object.prototype.hasOwnProperty.call(req.body, "assigneeId")
+      ) {
+        const assigneeId = req.body.assigneeId;
+
+        if (assigneeId === null) {
+          updateData.assigneeId = null;
+        } else {
+          const parsedAssigneeId = Number(assigneeId);
+
+          if (
+            !Number.isSafeInteger(parsedAssigneeId) ||
+            parsedAssigneeId <= 0
+          ) {
+            return res.status(400).json({
+              status: "error",
+              message: "Invalid assignee id",
+            });
+          }
+
+          const projectId = access.task.projectId;
+
+          if (projectId === null || projectId === undefined) {
+            return res.status(400).json({
+              status: "error",
+              message: "Tasks must belong to a project to be assigned",
+            });
+          }
+
+          const isMember = await tasks.isProjectMember(
+            projectId,
+            parsedAssigneeId
+          );
+
+          if (!isMember) {
+            return res.status(403).json({
+              status: "error",
+              message: "Assignee must be a member of this project",
+            });
+          }
+
+          updateData.assigneeId = parsedAssigneeId;
+        }
+      }
+
+      const updated = await tasks.updateForUser(
+        id,
+        req.user.id,
+        updateData
+      );
+
+      if (!updated) {
+        return res.status(404).json({
+          status: "error",
+          message: "Task not found",
+        });
+      }
+
+      return res.status(200).json({
+        status: "success",
+        message: "Task updated successfully",
+        data: updated,
+      });
+    } catch (error) {
+      next(error);
+    }});
 
   router.delete("/:id", async (req, res, next) => {
     try {
