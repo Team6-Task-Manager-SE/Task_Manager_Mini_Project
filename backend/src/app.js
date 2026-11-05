@@ -25,6 +25,11 @@ const {
   createTaskRepository,
 } = require("./repositories/taskRepository");
 
+const {
+  createTaskCommentRepository,
+} = require("./repositories/taskCommentRepository");
+
+const createTaskCommentRouter = require("./routes/taskCommentRoutes");
 const createTaskRouter = require("./routes/taskRoutes");
 
 // Sprint 2 Issue #19 - Due-Date Notifications
@@ -52,6 +57,8 @@ function createApp(dependencies = {}) {
   // Database and external services
   const database = dependencies.pool || pool;
   const cache = dependencies.redisClient || redisClient;
+  const comments = 
+    dependencies.comments || createTaskCommentRepository(database);
 
   // Repositories
   const users =
@@ -145,6 +152,15 @@ function createApp(dependencies = {}) {
     "/api/tasks",
     createTaskRouter({
       tasks,
+    })
+  );
+
+  // F-042 Task Comments API
+  app.use(
+   "/api/tasks",
+    createTaskCommentRouter({
+      tasks,
+      comments,
     })
   );
 

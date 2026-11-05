@@ -14,6 +14,8 @@ const {
   startNotificationScheduler,
 } = require("./workers/notificationScheduler");
 
+const { createCommentSocketService } = require("./services/commentSocketService");
+const { createTaskRepository } = require("./repositories/taskRepository");
 const PORT = Number(process.env.PORT || 5000);
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -63,6 +65,11 @@ async function start() {
   } else {
     server = http.createServer(app);
   }
+// F-042: Initialize authenticated real-time comment updates.
+const tasks = createTaskRepository(pool);
+const commentSocketService = createCommentSocketService(server, {
+  tasks,
+});
 
   let stopNotificationScheduler = () => {};
 
@@ -92,7 +99,9 @@ async function start() {
 
     // Stop creating new notification checks.
     stopNotificationScheduler();
-
+    // Close Socket.IO connections.
+    commentSocketService.io.disconnectSockets(true);
+    app.set("io", commentSocketService.io);
     try {
       // Stop accepting new HTTP requests.
       await new Promise((resolve, reject) => {
