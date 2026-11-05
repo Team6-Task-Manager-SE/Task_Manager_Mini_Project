@@ -114,9 +114,53 @@ function createEmailService() {
     };
   }
 
+  // F-040: Send a project invitation.
+  async function sendProjectInvitation({
+    email,
+    name,
+    projectName,
+    invitationLink,
+  }) {
+    const subject = `Invitation to join project: ${projectName}`;
+
+    const text = [
+      `Hi ${name || "there"},`,
+      "",
+      `You have been invited to join the project "${projectName}" on Task Manager.`,
+      "",
+      "Accept your invitation using this link:",
+      invitationLink,
+      "",
+      "If you were not expecting this invitation, you can ignore this email.",
+    ].join("\n");
+
+    if (!transporter) {
+      console.log(`[DEV EMAIL] Project invitation for ${email}`);
+      console.log(text);
+
+      return {
+        delivery: "development-log",
+        email,
+      };
+    }
+
+    await transporter.sendMail({
+      from,
+      to: email,
+      subject,
+      text,
+    });
+
+    return {
+      delivery: "smtp",
+      email,
+    };
+  }
+
   return {
     sendRegistrationConfirmation,
     sendOverdueTaskReminder,
+    sendProjectInvitation,
   };
 }
 
