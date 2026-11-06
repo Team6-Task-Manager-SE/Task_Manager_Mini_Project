@@ -32,6 +32,10 @@ const {
 const createTaskCommentRouter = require("./routes/taskCommentRoutes");
 const createTaskRouter = require("./routes/taskRoutes");
 
+// Project and Kanban board support.
+const { createProjectRepository } = require("./repositories/projectRepository");
+const createProjectRouter = require("./routes/projectRoutes");
+
 // Sprint 2 Issue #19 - Due-Date Notifications
 const createNotificationRouter = require("./routes/notificationRoutes");
 
@@ -72,6 +76,9 @@ function createApp(dependencies = {}) {
 
   const tasks =
     dependencies.tasks || createTaskRepository(database);
+
+  const projects =
+    dependencies.projects || createProjectRepository(database);
 
   const reports =
     dependencies.reports ||
@@ -171,6 +178,11 @@ function createApp(dependencies = {}) {
     createTaskRouter({
       tasks,
     })
+  );
+
+  app.use(
+    "/api/projects",
+    createProjectRouter({ projects })
   );
 
   // F-042 Task Comments API

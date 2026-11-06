@@ -19,6 +19,11 @@ const initialRegistration = {
 }
 
 const PRIORITIES = ['low', 'medium', 'high']
+const BOARD_COLUMNS = [
+  { id: 'todo', label: 'To do' },
+  { id: 'in-progress', label: 'In progress' },
+  { id: 'completed', label: 'Completed' },
+]
 
 const emptySummary = {
   total: 0,
@@ -213,6 +218,10 @@ function AdminUsageAnalytics({ token }) {
 // Main Task Manager Workspace
 function TaskWorkspace({ user, token, onLogout }) {
   const [tasks, setTasks] = useState([])
+  const [projects, setProjects] = useState([])
+  const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [projectName, setProjectName] = useState('')
+  const [projectDescription, setProjectDescription] = useState('')
   const [title, setTitle] = useState('')
   const [priority, setPriority] = useState('medium')
   const [tagsInput, setTagsInput] = useState('')
@@ -256,6 +265,16 @@ function TaskWorkspace({ user, token, onLogout }) {
     }
   }, [authorizedRequest])
 
+  const loadProjects = useCallback(async () => {
+    try {
+      const payload = await authorizedRequest('/api/projects')
+      setProjects(payload.data)
+      setError('')
+    } catch (requestError) {
+      setError(requestError.message)
+    }
+  }, [authorizedRequest])
+
   // Schedule initial loading asynchronously for React Hooks lint.
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -264,6 +283,36 @@ function TaskWorkspace({ user, token, onLogout }) {
 
     return () => clearTimeout(timer)
   }, [loadTasks])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void loadProjects()
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [loadProjects])
+
+  async function addProject(event) {
+    event.preventDefault()
+    if (!projectName.trim()) return
+
+    setError('')
+    try {
+      const payload = await authorizedRequest('/api/projects', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: projectName.trim(),
+          description: projectDescription.trim(),
+        }),
+      })
+      setProjects((current) => [payload.data, ...current])
+      setSelectedProjectId(String(payload.data.id))
+      setProjectName('')
+      setProjectDescription('')
+      setMessage('Project created. Add tasks and move them across the board.')
+    } catch (requestError) {
+      setError(requestError.message)
+    }
+  }
 
   async function addTask(event) {
     event.preventDefault()
@@ -280,6 +329,7 @@ function TaskWorkspace({ user, token, onLogout }) {
           priority,
           tags: parseTags(tagsInput),
           category: category.trim(),
+          projectId: selectedProjectId ? Number(selectedProjectId) : null,
         }),
       })
 
@@ -352,6 +402,29 @@ function TaskWorkspace({ user, token, onLogout }) {
     }
   }
 
+  async function moveTask(taskId, nextStatus) {
+    const task = tasks.find((item) => item.id === taskId)
+    if (!task || task.status === nextStatus) return
+
+    setError('')
+    try {
+      await authorizedRequest(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: nextStatus }),
+      })
+      setMessage(`Task moved to ${BOARD_COLUMNS.find((column) => column.id === nextStatus)?.label || nextStatus}.`)
+      await loadTasks()
+      await loadProjects()
+    } catch (requestError) {
+      setError(requestError.message)
+    }
+  }
+
+  const projectTasks = selectedProjectId
+    ? tasks.filter((task) => String(task.projectId) === selectedProjectId)
+    : tasks
+  const selectedProject = projects.find((project) => String(project.id) === selectedProjectId)
+
   return (
     <main className="workspace-shell">
       <header className="workspace-header">
@@ -413,6 +486,51 @@ function TaskWorkspace({ user, token, onLogout }) {
 
         {/* Sprint 2 Issue #19 - Due-Date Notifications */}
         <NotificationsPanel token={token} />
+
+        <section className="project-workspace" aria-labelledby="project-workspace-title">
+          <div className="project-workspace-heading">
+            <div>
+              <p className="eyebrow">PROJECTS</p>
+              <h2 id="project-workspace-title">Organize work by project</h2>
+            </div>
+            <label>
+              Board
+              <select
+                aria-label="Select project board"
+                value={selectedProjectId}
+                onChange={(event) => setSelectedProjectId(event.target.value)}
+              >
+                <option value="">All tasks</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={String(project.id)}>{project.name}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <form className="project-create-form" onSubmit={addProject}>
+            <label>
+              New project
+              <input
+                value={projectName}
+                onChange={(event) => setProjectName(event.target.value)}
+                placeholder="e.g. Semester project"
+                maxLength="200"
+                required
+              />
+            </label>
+            <label>
+              Description
+              <input
+                value={projectDescription}
+                onChange={(event) => setProjectDescription(event.target.value)}
+                placeholder="Optional project details"
+                maxLength="5000"
+              />
+            </label>
+            <button className="secondary-button" type="submit">Create project</button>
+          </form>
+        </section>
 
         {/* Sprint 1 - Task Creation */}
         <form
@@ -515,8 +633,65 @@ function TaskWorkspace({ user, token, onLogout }) {
             Loading your tasks…
           </p>
         ) : (
+          selectedProjectId ? (
+            <section className="kanban-board" aria-label={`${selectedProject?.name || 'Project'} Kanban board`}>
+              {BOARD_COLUMNS.map((column) => {
+                const columnTasks = projectTasks.filter((task) => task.status === column.id)
+                return (
+                  <section
+                    className="kanban-column"
+                    key={column.id}
+                    aria-labelledby={`kanban-${column.id}-title`}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => {
+                      event.preventDefault()
+                      const taskId = Number(event.dataTransfer.getData('text/plain'))
+                      if (Number.isSafeInteger(taskId)) void moveTask(taskId, column.id)
+                    }}
+                  >
+                    <header>
+                      <h3 id={`kanban-${column.id}-title`}>{column.label}</h3>
+                      <span>{columnTasks.length}</span>
+                    </header>
+                    {columnTasks.length === 0 ? (
+                      <p className="kanban-empty">Drop a task here</p>
+                    ) : (
+                      <ul>
+                        {columnTasks.map((task) => (
+                          <li
+                            key={task.id}
+                            draggable
+                            onDragStart={(event) => event.dataTransfer.setData('text/plain', String(task.id))}
+                          >
+                            <strong>{task.title}</strong>
+                            {task.description && <p>{task.description}</p>}
+                            <div className="chips">
+                              <em className={`chip priority-${task.priority}`}>{task.priority}</em>
+                              {task.category && <em className="chip category">{task.category}</em>}
+                            </div>
+                            <label>
+                              Move task
+                              <select
+                                aria-label={`Move ${task.title}`}
+                                value={task.status}
+                                onChange={(event) => void moveTask(task.id, event.target.value)}
+                              >
+                                {BOARD_COLUMNS.map((option) => (
+                                  <option key={option.id} value={option.id}>{option.label}</option>
+                                ))}
+                              </select>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                )
+              })}
+            </section>
+          ) : (
           <ul className="task-list">
-            {tasks.map((task) => (
+            {projectTasks.map((task) => (
               <li key={task.id}>
                 {editingId === task.id ? (
                   <input
@@ -637,11 +812,12 @@ function TaskWorkspace({ user, token, onLogout }) {
               </li>             
             ))}
           </ul>
+          )
         )}
 
-        {!loading && tasks.length === 0 && (
+        {!loading && projectTasks.length === 0 && (
           <p className="empty-state">
-            No tasks yet. Add your first one above.
+            {selectedProjectId ? 'This project has no tasks yet. Add one above.' : 'No tasks yet. Add your first one above.'}
           </p>
         )}
       </section>
