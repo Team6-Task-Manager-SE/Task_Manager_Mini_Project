@@ -52,6 +52,9 @@ const {
 } = require("./services/projectInvitationService");
 
 const createProjectInvitationRouter = require("./routes/projectInvitationRoutes");
+const {
+  createTaskAssignmentNotificationService,
+} = require("./services/taskAssignmentNotificationService");
 
 function createApp(dependencies = {}) {
   // Database and external services
@@ -103,7 +106,12 @@ function createApp(dependencies = {}) {
 
   // Initialize Express
   const app = express();
-
+  const assignmentNotifications =
+  dependencies.assignmentNotifications ||
+  createTaskAssignmentNotificationService({
+    pool: database,
+    getIo: () => app.get("io"),
+  });
   app.disable("x-powered-by");
 
   // Security middleware
@@ -152,6 +160,7 @@ function createApp(dependencies = {}) {
     "/api/tasks",
     createTaskRouter({
       tasks,
+      assignmentNotifications,
     })
   );
 

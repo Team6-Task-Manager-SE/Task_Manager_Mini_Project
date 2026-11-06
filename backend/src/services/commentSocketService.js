@@ -1,4 +1,3 @@
-
 const { Server } = require("socket.io");
 const { verifyToken } = require("./tokenService");
 
@@ -38,6 +37,9 @@ function createCommentSocketService(httpServer, { tasks }) {
   });
 
   io.on("connection", (socket) => {
+    // Private room for this authenticated user.
+    socket.join(`user:${socket.user.id}`);
+
     socket.on("task:join", async (taskId, acknowledge) => {
       const respond =
         typeof acknowledge === "function" ? acknowledge : () => {};

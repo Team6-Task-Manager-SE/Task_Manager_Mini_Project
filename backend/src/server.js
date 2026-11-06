@@ -1,4 +1,3 @@
-
 require("dotenv").config();
 
 const fs = require("node:fs");
@@ -70,7 +69,7 @@ const tasks = createTaskRepository(pool);
 const commentSocketService = createCommentSocketService(server, {
   tasks,
 });
-
+app.set("io", commentSocketService.io);
   let stopNotificationScheduler = () => {};
 
   // Start backend server.

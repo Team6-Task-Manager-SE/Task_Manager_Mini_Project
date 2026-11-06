@@ -8,7 +8,7 @@ const validateRequest = require("../middleware/validateRequest");
 const authenticate = require("../middleware/authenticate");
 const authorizeRoles = require("../middleware/authorizeRoles");
 
-function createTaskRouter({ tasks }) {
+function createTaskRouter({ tasks, assignmentNotifications }) {
   const router = express.Router();
 
   router.use(authenticate);
@@ -121,7 +121,13 @@ function createTaskRouter({ tasks }) {
         tags: req.body.tags,
         category: req.body.category,
       });
-
+      
+      if (data.assigneeId != null) {
+        await assignmentNotifications?.notifyAssigned(
+          data,
+          data.assigneeId
+        );
+      }
       return res.status(201).json({
         status: "success",
         message: "Task created successfully",
@@ -240,6 +246,15 @@ function createTaskRouter({ tasks }) {
           status: "error",
           message: "Task not found",
         });
+      }
+      if (
+        updated.assigneeId != null &&
+        Number(updated.assigneeId) !== Number(access.task.assigneeId)
+      ) {
+      await assignmentNotifications?.notifyAssigned(
+        updated,
+        updated.assigneeId
+        );
       }
 
       return res.status(200).json({
