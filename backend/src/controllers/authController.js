@@ -32,6 +32,37 @@ function createAuthController({ authService, users }) {
       }
     },
 
+    requestPasswordReset: async (req, res, next) => {
+      try {
+        await authService.requestPasswordReset({
+          email: req.body.email,
+          ipAddress: req.ip,
+        });
+        return res.status(202).json({
+          status: "success",
+          message: "If an account exists for that email, a reset link has been sent.",
+        });
+      } catch (error) {
+        return next(error);
+      }
+    },
+
+    resetPassword: async (req, res, next) => {
+      try {
+        await authService.resetPassword({
+          token: req.body.token,
+          password: req.body.password,
+          ipAddress: req.ip,
+        });
+        return res.status(200).json({
+          status: "success",
+          message: "Password updated. You can now sign in.",
+        });
+      } catch (error) {
+        return next(error);
+      }
+    },
+
     confirmEmail: async (req, res, next) => {
       try {
         const user = await authService.confirmEmail(req.query.token);

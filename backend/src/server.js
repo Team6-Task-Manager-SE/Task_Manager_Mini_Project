@@ -3,6 +3,7 @@ require("dotenv").config();
 const fs = require("node:fs");
 const https = require("node:https");
 const http = require("node:http");
+const { createAdapter } = require("@socket.io/redis-adapter");
 
 const app = require("./app");
 const pool = require("./config/database");
@@ -13,8 +14,14 @@ const {
   startNotificationScheduler,
 } = require("./workers/notificationScheduler");
 
-const { createCommentSocketService } = require("./services/commentSocketService");
-const { createTaskRepository } = require("./repositories/taskRepository");
+const {
+  createCommentSocketService,
+} = require("./services/commentSocketService");
+
+const {
+  createTaskRepository,
+} = require("./repositories/taskRepository");
+
 const PORT = Number(process.env.PORT || 5000);
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -44,32 +51,79 @@ async function start() {
     throw new Error("Production requires DB_SSL=true");
   }
 
-  // Apply pending database migrations.
-  await runMigrations(pool);
+  // Run database migrations.
+  if (process.env.RUN_MIGRATIONS_ON_START !== "false") {
+    await runMigrations(pool);
+  }
 
-  // Connect Redis if it is not already connected.
-  if (!redisClient.isOpen) {
+  // Redis configuration.
+  const useDevelopmentRateLimitFallback =
+    !isProduction && process.env.DEV_DISABLE_REDIS === "true";
+
+  if (useDevelopmentRateLimitFallback) {
+    console.warn(
+      "Redis disabled for development; using in-memory auth rate limiting."
+    );
+  } else if (!redisClient.isOpen) {
     await redisClient.connect();
   }
 
   let server;
+  let socketPubClient;
+  let socketSubClient;
+
+  const tlsTerminatedAtProxy =
+    process.env.TLS_TERMINATED_AT_PROXY === "true";
 
   const useHttps =
-    isProduction ||
-    Boolean(process.env.HTTPS_KEY_PATH) ||
-    Boolean(process.env.HTTPS_CERT_PATH);
+    !tlsTerminatedAtProxy &&
+    (
+      isProduction ||
+      Boolean(process.env.HTTPS_KEY_PATH) ||
+      Boolean(process.env.HTTPS_CERT_PATH)
+    );
 
+  // Create HTTP or HTTPS server.
   if (useHttps) {
     server = createHttpsServer();
   } else {
     server = http.createServer(app);
   }
-// F-042: Initialize authenticated real-time comment updates.
-const tasks = createTaskRepository(pool);
-const commentSocketService = createCommentSocketService(server, {
-  tasks,
-});
-app.set("io", commentSocketService.io);
+
+  // F-042: Initialize authenticated real-time Socket.IO service.
+  const tasks = createTaskRepository(pool);
+
+  const commentSocketService = createCommentSocketService(server, {
+    tasks,
+  });
+
+  // Make Socket.IO available to the application and F-032 notification service.
+  app.set("io", commentSocketService.io);
+
+  // Share Socket.IO rooms and broadcasts across backend replicas.
+  // Local development can opt out with the in-memory auth rate-limit fallback.
+  if (!useDevelopmentRateLimitFallback) {
+    socketPubClient = redisClient.duplicate();
+    socketSubClient = redisClient.duplicate();
+
+    socketPubClient.on("error", (error) =>
+      console.error("Socket.IO Redis publisher error:", error.message)
+    );
+
+    socketSubClient.on("error", (error) =>
+      console.error("Socket.IO Redis subscriber error:", error.message)
+    );
+
+    await Promise.all([
+      socketPubClient.connect(),
+      socketSubClient.connect(),
+    ]);
+
+    commentSocketService.io.adapter(
+      createAdapter(socketPubClient, socketSubClient)
+    );
+  }
+
   let stopNotificationScheduler = () => {};
 
   // Start backend server.
@@ -81,8 +135,7 @@ app.set("io", commentSocketService.io);
     );
 
     // Start the notification scheduler after the server starts.
-    stopNotificationScheduler =
-      startNotificationScheduler(pool);
+    stopNotificationScheduler = startNotificationScheduler(pool);
   });
 
   let shuttingDown = false;
@@ -98,9 +151,10 @@ app.set("io", commentSocketService.io);
 
     // Stop creating new notification checks.
     stopNotificationScheduler();
+
     // Close Socket.IO connections.
     commentSocketService.io.disconnectSockets(true);
-    app.set("io", commentSocketService.io);
+
     try {
       // Stop accepting new HTTP requests.
       await new Promise((resolve, reject) => {
@@ -113,10 +167,20 @@ app.set("io", commentSocketService.io);
         });
       });
 
+      // Close Redis connections.
       if (redisClient.isOpen) {
+        if (socketPubClient?.isOpen) {
+          await socketPubClient.quit();
+        }
+
+        if (socketSubClient?.isOpen) {
+          await socketSubClient.quit();
+        }
+
         await redisClient.quit();
       }
 
+      // Close database connection pool.
       await pool.end();
 
       console.log("Backend shutdown completed.");

@@ -62,6 +62,37 @@ function createEmailService() {
     };
   }
 
+  async function sendPasswordReset({ email, name, token }) {
+    const resetUrl = `${frontendUrl}/?reset=${encodeURIComponent(token)}`;
+    const text = [
+      `Hi ${name || "there"},`,
+      "",
+      "Use this link within 30 minutes to reset your Task Manager password:",
+      resetUrl,
+      "",
+      "The link can only be used once. If you did not request this change, you can ignore this email.",
+    ].join("\n");
+
+    if (!transporter) {
+      console.log(`[DEV EMAIL] Password reset for ${email}`);
+      console.log(text);
+      return { delivery: "development-log", email };
+    }
+
+    await transporter.sendMail({
+      from,
+      to: email,
+      subject: "Reset your Task Manager password",
+      text,
+      html:
+        `<p>Hi ${name || "there"},</p>` +
+        `<p><a href="${resetUrl}">Reset your Task Manager password</a>. ` +
+        "This link expires in 30 minutes and can only be used once.</p>",
+    });
+
+    return { delivery: "smtp", email };
+  }
+
   async function sendOverdueTaskReminder({
     email,
     name,
@@ -159,6 +190,7 @@ function createEmailService() {
 
   return {
     sendRegistrationConfirmation,
+    sendPasswordReset,
     sendOverdueTaskReminder,
     sendProjectInvitation,
   };

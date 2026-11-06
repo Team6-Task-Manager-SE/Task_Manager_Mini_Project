@@ -1,8 +1,9 @@
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import NotificationsPanel from './components/NotificationsPanel'
 import WeeklyReport from './components/WeeklyReport'
 import TaskComments from './components/TaskComments'
+import TaskAssignmentNotifications from './components/TaskAssignmentNotifications'
 import './App.css'
 
 const initialLogin = {
@@ -18,6 +19,11 @@ const initialRegistration = {
 }
 
 const PRIORITIES = ['low', 'medium', 'high']
+const BOARD_COLUMNS = [
+  { id: 'todo', label: 'To do' },
+  { id: 'in-progress', label: 'In progress' },
+  { id: 'completed', label: 'Completed' },
+]
 
 const emptySummary = {
   total: 0,
@@ -129,9 +135,100 @@ function DashboardSummary({ summary }) {
   )
 }
 
+function AdminUsageAnalytics({ token }) {
+  const [overview, setOverview] = useState(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    apiRequest('/api/admin/analytics', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((payload) => {
+        if (active) setOverview(payload.data)
+      })
+      .catch((requestError) => {
+        if (active) setError(requestError.message)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => { active = false }
+  }, [token])
+
+  return (
+    <section className="admin-analytics" aria-labelledby="admin-analytics-title">
+      <div className="admin-analytics-heading">
+        <div>
+          <p className="eyebrow">ADMINISTRATION</p>
+          <h2 id="admin-analytics-title">Usage analytics</h2>
+          <p>Account activity from the last 30 days and task activity by project.</p>
+        </div>
+        {overview && <small>Updated {new Date(overview.generatedAt).toLocaleString()}</small>}
+      </div>
+
+      {loading && <p className="empty-state" role="status">Loading analytics…</p>}
+      {error && <p className="message error" role="alert">{error}</p>}
+      {overview && (
+        <>
+          <div className="admin-analytics-grid">
+            <div><span>Registered users</span><strong>{overview.summary.totalUsers}</strong></div>
+            <div><span>Active users · 30 days</span><strong>{overview.summary.activeUsers}</strong></div>
+            <div><span>New users · 30 days</span><strong>{overview.summary.newUsers}</strong></div>
+            <div><span>Projects</span><strong>{overview.summary.totalProjects}</strong></div>
+            <div><span>Tasks</span><strong>{overview.summary.totalTasks}</strong></div>
+            <div><span>Completed tasks</span><strong>{overview.summary.completedTasks}</strong></div>
+            <div><span>Recorded events · 30 days</span><strong>{overview.summary.recordedEvents}</strong></div>
+          </div>
+
+          <div className="admin-projects-heading">
+            <h3>Project activity</h3>
+            <span>Project membership is the app’s current team/workspace grouping.</span>
+          </div>
+          {overview.projects.length === 0 ? (
+            <p className="empty-state">No project activity has been recorded yet.</p>
+          ) : (
+            <div className="admin-projects-scroll" role="region" aria-label="Project activity" tabIndex="0">
+              <table className="admin-projects-table">
+                <thead>
+                  <tr><th scope="col">Project</th><th scope="col">Members</th><th scope="col">Tasks</th><th scope="col">Completed</th><th scope="col">Completion</th></tr>
+                </thead>
+                <tbody>
+                  {overview.projects.map((project) => (
+                    <tr key={project.id}>
+                      <th scope="row">{project.name}</th>
+                      <td>{project.memberCount}</td>
+                      <td>{project.taskCount}</td>
+                      <td>{project.completedCount}</td>
+                      <td>{project.completionRate}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
 // Main Task Manager Workspace
 function TaskWorkspace({ user, token, onLogout }) {
   const [tasks, setTasks] = useState([])
+  const [projects, setProjects] = useState([])
+  const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [projectName, setProjectName] = useState('')
+  const [projectDescription, setProjectDescription] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [priorityFilter, setPriorityFilter] = useState('all')
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [dueFromFilter, setDueFromFilter] = useState('')
+  const [dueToFilter, setDueToFilter] = useState('')
+  const [sortOrder, setSortOrder] = useState('created-desc')
   const [title, setTitle] = useState('')
   const [priority, setPriority] = useState('medium')
   const [tagsInput, setTagsInput] = useState('')
@@ -175,6 +272,82 @@ function TaskWorkspace({ user, token, onLogout }) {
     }
   }, [authorizedRequest])
 
+  const loadProjects = useCallback(async () => {
+    try {
+      const payload = await authorizedRequest('/api/projects')
+      setProjects(payload.data)
+      setError('')
+    } catch (requestError) {
+      setError(requestError.message)
+    }
+  }, [authorizedRequest])
+
+  const projectTasks = useMemo(
+    () => selectedProjectId
+      ? tasks.filter((task) => String(task.projectId) === selectedProjectId)
+      : tasks,
+    [tasks, selectedProjectId]
+  )
+  const selectedProject = projects.find((project) => String(project.id) === selectedProjectId)
+
+  const categories = useMemo(
+    () => [...new Set(tasks.map((task) => task.category).filter(Boolean))]
+      .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' })),
+    [tasks]
+  )
+
+  const visibleTasks = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase()
+    const localDateKey = (value) => {
+      if (!value) return ''
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) return ''
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+
+    const filtered = projectTasks.filter((task) => {
+      const matchesQuery = !query ||
+        `${task.title || ''} ${task.description || ''}`.toLocaleLowerCase().includes(query)
+      const matchesStatus = statusFilter === 'all' || task.status === statusFilter
+      const matchesPriority = priorityFilter === 'all' || task.priority === priorityFilter
+      const matchesCategory = categoryFilter === 'all' || task.category === categoryFilter
+      const dueDate = localDateKey(task.dueDate)
+      const matchesDueRange =
+        (!dueFromFilter || Boolean(dueDate && dueDate >= dueFromFilter)) &&
+        (!dueToFilter || Boolean(dueDate && dueDate <= dueToFilter))
+
+      return matchesQuery && matchesStatus && matchesPriority && matchesCategory && matchesDueRange
+    })
+
+    const priorityRank = { high: 0, medium: 1, low: 2 }
+    const sorted = [...filtered]
+    sorted.sort((left, right) => {
+      if (sortOrder === 'due-asc') {
+        const leftDue = localDateKey(left.dueDate) || '9999-12-31'
+        const rightDue = localDateKey(right.dueDate) || '9999-12-31'
+        return leftDue.localeCompare(rightDue) || left.title.localeCompare(right.title)
+      }
+      if (sortOrder === 'priority-desc') {
+        return (priorityRank[left.priority] ?? 3) - (priorityRank[right.priority] ?? 3) ||
+          right.createdAt.localeCompare(left.createdAt)
+      }
+      return right.createdAt.localeCompare(left.createdAt)
+    })
+    return sorted
+  }, [projectTasks, searchQuery, statusFilter, priorityFilter, categoryFilter, dueFromFilter, dueToFilter, sortOrder])
+
+  function clearTaskTools() {
+    setSearchQuery('')
+    setStatusFilter('all')
+    setPriorityFilter('all')
+    setCategoryFilter('all')
+    setDueFromFilter('')
+    setDueToFilter('')
+    setSortOrder('created-desc')
+  }
   // Schedule initial loading asynchronously for React Hooks lint.
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -183,6 +356,36 @@ function TaskWorkspace({ user, token, onLogout }) {
 
     return () => clearTimeout(timer)
   }, [loadTasks])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void loadProjects()
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [loadProjects])
+
+  async function addProject(event) {
+    event.preventDefault()
+    if (!projectName.trim()) return
+
+    setError('')
+    try {
+      const payload = await authorizedRequest('/api/projects', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: projectName.trim(),
+          description: projectDescription.trim(),
+        }),
+      })
+      setProjects((current) => [payload.data, ...current])
+      setSelectedProjectId(String(payload.data.id))
+      setProjectName('')
+      setProjectDescription('')
+      setMessage('Project created. Add tasks and move them across the board.')
+    } catch (requestError) {
+      setError(requestError.message)
+    }
+  }
 
   async function addTask(event) {
     event.preventDefault()
@@ -199,6 +402,7 @@ function TaskWorkspace({ user, token, onLogout }) {
           priority,
           tags: parseTags(tagsInput),
           category: category.trim(),
+          projectId: selectedProjectId ? Number(selectedProjectId) : null,
         }),
       })
 
@@ -271,6 +475,24 @@ function TaskWorkspace({ user, token, onLogout }) {
     }
   }
 
+  async function moveTask(taskId, nextStatus) {
+    const task = tasks.find((item) => item.id === taskId)
+    if (!task || task.status === nextStatus) return
+
+    setError('')
+    try {
+      await authorizedRequest(`/api/tasks/${taskId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: nextStatus }),
+      })
+      setMessage(`Task moved to ${BOARD_COLUMNS.find((column) => column.id === nextStatus)?.label || nextStatus}.`)
+      await loadTasks()
+      await loadProjects()
+    } catch (requestError) {
+      setError(requestError.message)
+    }
+  }
+
   return (
     <main className="workspace-shell">
       <header className="workspace-header">
@@ -304,6 +526,8 @@ function TaskWorkspace({ user, token, onLogout }) {
         </div>
       </header>
 
+      <TaskAssignmentNotifications token={token} />
+
       <section className="workspace-card">
         <div className="workspace-heading">
           <div>
@@ -323,11 +547,58 @@ function TaskWorkspace({ user, token, onLogout }) {
         {/* Sprint 1 - Dashboard Summary */}
         <DashboardSummary summary={summary} />
 
+        {user.role === 'admin' && <AdminUsageAnalytics token={token} />}
+
         {/* Sprint 2 Issue #25 - Weekly Productivity Report */}
         <WeeklyReport token={token} />
 
         {/* Sprint 2 Issue #19 - Due-Date Notifications */}
         <NotificationsPanel token={token} />
+
+        <section className="project-workspace" aria-labelledby="project-workspace-title">
+          <div className="project-workspace-heading">
+            <div>
+              <p className="eyebrow">PROJECTS</p>
+              <h2 id="project-workspace-title">Organize work by project</h2>
+            </div>
+            <label>
+              Board
+              <select
+                aria-label="Select project board"
+                value={selectedProjectId}
+                onChange={(event) => setSelectedProjectId(event.target.value)}
+              >
+                <option value="">All tasks</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={String(project.id)}>{project.name}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <form className="project-create-form" onSubmit={addProject}>
+            <label>
+              New project
+              <input
+                value={projectName}
+                onChange={(event) => setProjectName(event.target.value)}
+                placeholder="e.g. Semester project"
+                maxLength="200"
+                required
+              />
+            </label>
+            <label>
+              Description
+              <input
+                value={projectDescription}
+                onChange={(event) => setProjectDescription(event.target.value)}
+                placeholder="Optional project details"
+                maxLength="5000"
+              />
+            </label>
+            <button className="secondary-button" type="submit">Create project</button>
+          </form>
+        </section>
 
         {/* Sprint 1 - Task Creation */}
         <form
@@ -424,14 +695,140 @@ function TaskWorkspace({ user, token, onLogout }) {
           </p>
         )}
 
+        <section className="task-tools" aria-label="Search, filter, and sort tasks">
+          <label className="task-search-field">
+            Search tasks
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search titles and descriptions"
+            />
+          </label>
+
+          <label>
+            Status
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="all">All statuses</option>
+              <option value="todo">To do</option>
+              <option value="in-progress">In progress</option>
+              <option value="completed">Completed</option>
+            </select>
+          </label>
+
+          <label>
+            Priority
+            <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}>
+              <option value="all">All priorities</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </label>
+
+          <label>
+            Category
+            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+              <option value="all">All categories</option>
+              {categories.map((categoryName) => (
+                <option key={categoryName} value={categoryName}>{categoryName}</option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Due from
+            <input type="date" value={dueFromFilter} onChange={(event) => setDueFromFilter(event.target.value)} />
+          </label>
+
+          <label>
+            Due to
+            <input type="date" value={dueToFilter} onChange={(event) => setDueToFilter(event.target.value)} />
+          </label>
+
+          <label>
+            Sort by
+            <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}>
+              <option value="created-desc">Newest first</option>
+              <option value="due-asc">Due date (earliest first)</option>
+              <option value="priority-desc">Priority (high to low)</option>
+            </select>
+          </label>
+
+          <button className="secondary-button task-tools-clear" type="button" onClick={clearTaskTools}>
+            Clear search and filters
+          </button>
+        </section>
+
+        <p className="task-results-count" aria-live="polite">
+          Showing {visibleTasks.length} of {tasks.length} tasks
+        </p>
+
         {/* Sprint 1 - Task List */}
         {loading ? (
           <p className="empty-state">
             Loading your tasks…
           </p>
         ) : (
+          selectedProjectId ? (
+            <section className="kanban-board" aria-label={`${selectedProject?.name || 'Project'} Kanban board`}>
+              {BOARD_COLUMNS.map((column) => {
+                const columnTasks = visibleTasks.filter((task) => task.status === column.id)
+                return (
+                  <section
+                    className="kanban-column"
+                    key={column.id}
+                    aria-labelledby={`kanban-${column.id}-title`}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => {
+                      event.preventDefault()
+                      const taskId = Number(event.dataTransfer.getData('text/plain'))
+                      if (Number.isSafeInteger(taskId)) void moveTask(taskId, column.id)
+                    }}
+                  >
+                    <header>
+                      <h3 id={`kanban-${column.id}-title`}>{column.label}</h3>
+                      <span>{columnTasks.length}</span>
+                    </header>
+                    {columnTasks.length === 0 ? (
+                      <p className="kanban-empty">Drop a task here</p>
+                    ) : (
+                      <ul>
+                        {columnTasks.map((task) => (
+                          <li
+                            key={task.id}
+                            draggable
+                            onDragStart={(event) => event.dataTransfer.setData('text/plain', String(task.id))}
+                          >
+                            <strong>{task.title}</strong>
+                            {task.description && <p>{task.description}</p>}
+                            <div className="chips">
+                              <em className={`chip priority-${task.priority}`}>{task.priority}</em>
+                              {task.category && <em className="chip category">{task.category}</em>}
+                            </div>
+                            <label>
+                              Move task
+                              <select
+                                aria-label={`Move ${task.title}`}
+                                value={task.status}
+                                onChange={(event) => void moveTask(task.id, event.target.value)}
+                              >
+                                {BOARD_COLUMNS.map((option) => (
+                                  <option key={option.id} value={option.id}>{option.label}</option>
+                                ))}
+                              </select>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                )
+              })}
+            </section>
+          ) : (
           <ul className="task-list">
-            {tasks.map((task) => (
+            {visibleTasks.map((task) => (
               <li key={task.id}>
                 {editingId === task.id ? (
                   <input
@@ -552,11 +949,14 @@ function TaskWorkspace({ user, token, onLogout }) {
               </li>             
             ))}
           </ul>
+          )
         )}
 
-        {!loading && tasks.length === 0 && (
+        {!loading && visibleTasks.length === 0 && (
           <p className="empty-state">
-            No tasks yet. Add your first one above.
+            {projectTasks.length === 0
+              ? (selectedProjectId ? 'This project has no tasks yet. Add one above.' : 'No tasks yet. Add your first one above.')
+              : 'No tasks match these search and filter settings.'}
           </p>
         )}
       </section>
@@ -566,10 +966,20 @@ function TaskWorkspace({ user, token, onLogout }) {
 
 // Login and Registration
 function App() {
-  const [mode, setMode] = useState('login')
+  const [mode, setMode] = useState(() =>
+    new URLSearchParams(window.location.search).has('reset')
+      ? 'reset'
+      : 'login'
+  )
   const [login, setLogin] = useState(initialLogin)
   const [registration, setRegistration] =
     useState(initialRegistration)
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetToken, setResetToken] = useState(() =>
+    new URLSearchParams(window.location.search).get('reset') || ''
+  )
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmNewPassword, setConfirmNewPassword] = useState('')
 
   const [user, setUser] = useState(null)
 
@@ -582,10 +992,9 @@ function App() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
+    const query = new URLSearchParams(window.location.search)
     const confirmationToken =
-      new URLSearchParams(
-        window.location.search
-      ).get('confirm')
+      query.get('confirm')
 
     if (confirmationToken) {
       apiRequest(
@@ -663,6 +1072,67 @@ function App() {
     }
   }
 
+  async function requestPasswordReset(event) {
+    event.preventDefault()
+    setLoading(true)
+    setError('')
+    setNotice('')
+
+    try {
+      await apiRequest('/api/auth/password-reset/request', {
+        method: 'POST',
+        body: JSON.stringify({ email: resetEmail }),
+      })
+      setNotice('If an account exists for that email, a reset link has been sent.')
+    } catch (requestError) {
+      setError(requestError.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function submitPasswordReset(event) {
+    event.preventDefault()
+    setError('')
+    setNotice('')
+
+    if (newPassword !== confirmNewPassword) {
+      setError('Passwords do not match')
+      return
+    }
+
+    setLoading(true)
+    try {
+      await apiRequest('/api/auth/password-reset/confirm', {
+        method: 'POST',
+        body: JSON.stringify({ token: resetToken, password: newPassword }),
+      })
+      localStorage.removeItem('taskManagerToken')
+      setToken(null)
+      setUser(null)
+      setMode('login')
+      setResetToken('')
+      setNewPassword('')
+      setConfirmNewPassword('')
+      window.history.replaceState({}, '', window.location.pathname)
+      setNotice('Password updated. You can now sign in.')
+    } catch (requestError) {
+      setError(requestError.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function returnToSignIn() {
+    setMode('login')
+    setResetToken('')
+    setNewPassword('')
+    setConfirmNewPassword('')
+    setError('')
+    setNotice('')
+    window.history.replaceState({}, '', window.location.pathname)
+  }
+
   async function submitRegistration(event) {
     event.preventDefault()
 
@@ -711,7 +1181,10 @@ function App() {
     setNotice('You have been signed out.')
   }
 
-  if (user && token) {
+  const resetLinkIsOpen =
+    new URLSearchParams(window.location.search).has('reset')
+
+  if (user && token && !resetLinkIsOpen) {
     return (
       <TaskWorkspace
         user={user}
@@ -813,17 +1286,25 @@ function App() {
             <h2>
               {mode === 'login'
                 ? 'Sign in to your account'
-                : 'Create your account'}
+                : mode === 'register'
+                  ? 'Create your account'
+                  : mode === 'forgot'
+                    ? 'Reset your password'
+                    : 'Choose a new password'}
             </h2>
 
             <p>
               {mode === 'login'
                 ? 'Pick up where you left off.'
-                : 'Start organizing your work in minutes.'}
+                : mode === 'register'
+                  ? 'Start organizing your work in minutes.'
+                  : mode === 'forgot'
+                    ? 'We’ll email you a secure link if the account exists.'
+                    : 'Choose a new password for your account.'}
             </p>
           </div>
 
-          <div
+          {(mode === 'login' || mode === 'register') && <div
             className="mode-switch"
             role="tablist"
             aria-label="Authentication mode"
@@ -855,7 +1336,7 @@ function App() {
             >
               Create account
             </button>
-          </div>
+          </div>}
 
           {notice && (
             <p
@@ -922,8 +1403,18 @@ function App() {
                   ? 'Signing in…'
                   : 'Sign in'}
               </button>
+              <button
+                className="text-button"
+                type="button"
+                onClick={() => {
+                  setResetEmail(login.email)
+                  selectMode('forgot')
+                }}
+              >
+                Forgot password?
+              </button>
             </form>
-          ) : (
+          ) : mode === 'register' ? (
             <form onSubmit={submitRegistration}>
               <label>
                 Full name
@@ -1010,6 +1501,61 @@ function App() {
                 {loading
                   ? 'Creating account…'
                   : 'Create account'}
+              </button>
+            </form>
+          ) : mode === 'forgot' ? (
+            <form onSubmit={requestPasswordReset}>
+              <label>
+                Email address
+                <input
+                  type="email"
+                  autoComplete="email"
+                  value={resetEmail}
+                  onChange={(event) => setResetEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  required
+                />
+              </label>
+              <button className="primary-button" disabled={loading} type="submit">
+                {loading ? 'Sending…' : 'Send reset link'}
+              </button>
+              <button className="text-button" type="button" onClick={returnToSignIn}>
+                Back to sign in
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={submitPasswordReset}>
+              <label>
+                New password
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  placeholder="8+ characters, mixed case and number"
+                  minLength="8"
+                  maxLength="128"
+                  required
+                />
+              </label>
+              <label>
+                Confirm new password
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmNewPassword}
+                  onChange={(event) => setConfirmNewPassword(event.target.value)}
+                  placeholder="Repeat your new password"
+                  minLength="8"
+                  maxLength="128"
+                  required
+                />
+              </label>
+              <button className="primary-button" disabled={loading} type="submit">
+                {loading ? 'Updating…' : 'Update password'}
+              </button>
+              <button className="text-button" type="button" onClick={returnToSignIn}>
+                Back to sign in
               </button>
             </form>
           )}

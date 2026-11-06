@@ -205,6 +205,11 @@ The application will undergo multiple levels of testing.
 
 Testing will follow the requirements and test cases documented in the Software Test Plan.
 
+The repository CI runs frontend lint/build and database-independent backend
+tests on Ubuntu, Windows, and macOS. PostgreSQL integration tests run in a
+PostgreSQL 16 service. See [`docs/performance-testing.md`](docs/performance-testing.md)
+for the repeatable 500-worker performance run and the latest local measurements.
+
 ---
 
 ## Team Information
@@ -279,16 +284,29 @@ backend at `http://127.0.0.1:5000`.
 | `POST` | `/api/auth/register` | Create an account and send a confirmation link |
 | `POST` | `/api/auth/login` | Authenticate and receive a JWT |
 | `GET` | `/api/auth/confirm-email?token=...` | Confirm a registered email address |
+| `POST` | `/api/auth/password-reset/request` | Request a password reset link by email |
+| `POST` | `/api/auth/password-reset/confirm` | Set a new password using a reset token |
 | `GET` | `/api/auth/me` | Return the authenticated user; requires a bearer token |
 
 Authentication endpoints are limited to 10 requests per IP address per minute.
 Five consecutive incorrect passwords lock the account for 15 minutes.
+Password reset links expire after 30 minutes, are stored as token hashes, and can be used only once.
+
+### Admin Usage Analytics
+
+`GET /api/admin/analytics` returns account activity for the last 30 days and
+task/member totals grouped by project. The route requires a valid bearer token
+whose account has the `admin` role. The current schema represents collaborative
+workspaces with `projects` and `project_members`, so project membership is the
+team grouping shown in the dashboard. Analytics are aggregated from the
+PostgreSQL users, projects, tasks, and audit log tables; no personal task text
+or email addresses are exposed.
 
 ---
 
 ## Future Enhancements
 
-- Improved reporting and analytics.
+- Expanded reporting and analytics beyond the current admin usage dashboard.
 - Enhanced collaboration features.
 - Additional automation for task management.
 - Improved notification customization.

@@ -32,6 +32,10 @@ const {
 const createTaskCommentRouter = require("./routes/taskCommentRoutes");
 const createTaskRouter = require("./routes/taskRoutes");
 
+// Project and Kanban board support.
+const { createProjectRepository } = require("./repositories/projectRepository");
+const createProjectRouter = require("./routes/projectRoutes");
+
 // Sprint 2 Issue #19 - Due-Date Notifications
 const createNotificationRouter = require("./routes/notificationRoutes");
 
@@ -52,27 +56,48 @@ const {
 } = require("./services/projectInvitationService");
 
 const createProjectInvitationRouter = require("./routes/projectInvitationRoutes");
+
+// F-032 - Real-Time Task Assignment Notifications
 const {
   createTaskAssignmentNotificationService,
 } = require("./services/taskAssignmentNotificationService");
+
+// Sprint 2 Issue #26 - Admin usage analytics
+const {
+  createAdminAnalyticsRepository,
+} = require("./repositories/adminAnalyticsRepository");
+
+const createAdminAnalyticsRouter = require("./routes/adminAnalyticsRoutes");
 
 function createApp(dependencies = {}) {
   // Database and external services
   const database = dependencies.pool || pool;
   const cache = dependencies.redisClient || redisClient;
-  const comments = 
-    dependencies.comments || createTaskCommentRepository(database);
+
+  const comments =
+    dependencies.comments ||
+    createTaskCommentRepository(database);
 
   // Repositories
   const users =
-    dependencies.users || createUserRepository(database);
+    dependencies.users ||
+    createUserRepository(database);
 
   const tasks =
-    dependencies.tasks || createTaskRepository(database);
+    dependencies.tasks ||
+    createTaskRepository(database);
+
+  const projects =
+    dependencies.projects ||
+    createProjectRepository(database);
 
   const reports =
     dependencies.reports ||
     createWeeklyReportRepository(database);
+
+  const analytics =
+    dependencies.analytics ||
+    createAdminAnalyticsRepository(database);
 
   // F-040 Invitation Repository
   const invitations =
@@ -81,7 +106,8 @@ function createApp(dependencies = {}) {
 
   // Email Service
   const emailService =
-    dependencies.emailService || createEmailService();
+    dependencies.emailService ||
+    createEmailService();
 
   // Authentication Service
   const authService =
@@ -106,12 +132,24 @@ function createApp(dependencies = {}) {
 
   // Initialize Express
   const app = express();
+
+  // F-032: Task Assignment Notification Service
   const assignmentNotifications =
-  dependencies.assignmentNotifications ||
-  createTaskAssignmentNotificationService({
-    pool: database,
-    getIo: () => app.get("io"),
-  });
+    dependencies.assignmentNotifications ||
+    createTaskAssignmentNotificationService({
+      pool: database,
+      getIo: () => app.get("io"),
+    });
+
+  // Reverse proxy configuration
+  if (process.env.TRUST_PROXY) {
+    app.set("trust proxy", Number(process.env.TRUST_PROXY));
+  }
+
+  if (process.env.TRUST_PROXY === "true") {
+    app.set("trust proxy", 1);
+  }
+
   app.disable("x-powered-by");
 
   // Security middleware
@@ -164,9 +202,14 @@ function createApp(dependencies = {}) {
     })
   );
 
+  app.use(
+    "/api/projects",
+    createProjectRouter({ projects })
+  );
+
   // F-042 Task Comments API
   app.use(
-   "/api/tasks",
+    "/api/tasks",
     createTaskCommentRouter({
       tasks,
       comments,
@@ -195,6 +238,12 @@ function createApp(dependencies = {}) {
     createProjectInvitationRouter({
       invitationService,
     })
+  );
+
+  // Admin Analytics API
+  app.use(
+    "/api/admin",
+    createAdminAnalyticsRouter({ analytics })
   );
 
   // Global error handler
