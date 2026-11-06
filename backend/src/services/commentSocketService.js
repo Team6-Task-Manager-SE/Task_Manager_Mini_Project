@@ -1,4 +1,3 @@
-
 const { Server } = require("socket.io");
 const { verifyToken } = require("./tokenService");
 
@@ -27,7 +26,10 @@ function createCommentSocketService(httpServer, { tasks }) {
         role: payload.role,
       };
 
-      if (!Number.isSafeInteger(socket.user.id) || socket.user.id <= 0) {
+      if (
+        !Number.isSafeInteger(socket.user.id) ||
+        socket.user.id <= 0
+      ) {
         return next(new Error("Invalid user"));
       }
 
@@ -38,9 +40,11 @@ function createCommentSocketService(httpServer, { tasks }) {
   });
 
   io.on("connection", (socket) => {
-    // Each authenticated socket can receive only its own private assignments.
+    // Private room for this authenticated user.
+    // Assignment notifications are delivered to this user's room only.
     socket.join(`user:${socket.user.id}`);
 
+    // Join a task room only after verifying project access.
     socket.on("task:join", async (taskId, acknowledge) => {
       const respond =
         typeof acknowledge === "function" ? acknowledge : () => {};
@@ -49,13 +53,19 @@ function createCommentSocketService(httpServer, { tasks }) {
         const id = Number(taskId);
 
         if (!Number.isSafeInteger(id) || id <= 0) {
-          return respond({ success: false, message: "Invalid task ID" });
+          return respond({
+            success: false,
+            message: "Invalid task ID",
+          });
         }
 
         const task = await tasks.getById(id);
 
         if (!task || task.projectId == null) {
-          return respond({ success: false, message: "Task not found" });
+          return respond({
+            success: false,
+            message: "Task not found",
+          });
         }
 
         const allowed = await tasks.canAccessProject(
@@ -64,7 +74,10 @@ function createCommentSocketService(httpServer, { tasks }) {
         );
 
         if (!allowed) {
-          return respond({ success: false, message: "Project access denied" });
+          return respond({
+            success: false,
+            message: "Project access denied",
+          });
         }
 
         await socket.join(`task:${id}`);
@@ -72,10 +85,15 @@ function createCommentSocketService(httpServer, { tasks }) {
         return respond({ success: true });
       } catch (error) {
         console.error("Comment socket join failed:", error);
-        return respond({ success: false, message: "Unable to join task" });
+
+        return respond({
+          success: false,
+          message: "Unable to join task",
+        });
       }
     });
 
+    // Leave a task room.
     socket.on("task:leave", async (taskId) => {
       const id = Number(taskId);
 

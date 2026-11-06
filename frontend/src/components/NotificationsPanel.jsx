@@ -1,6 +1,5 @@
-
 import { useCallback, useEffect, useState } from 'react'
-
+import { io } from 'socket.io-client'
 export default function NotificationsPanel({ token }) {
   const [notifications, setNotifications] = useState([])
   const [loading, setLoading] = useState(true)
@@ -48,6 +47,34 @@ export default function NotificationsPanel({ token }) {
       clearInterval(refreshTimer)
     }
   }, [loadNotifications])
+    // Listen for real-time task assignment notifications.
+  useEffect(() => {
+    if (!token) return
+
+    const socket = io({
+      auth: { token },
+    })
+
+    socket.on('notification:new', (notification) => {
+      setNotifications((current) => {
+        const alreadyExists = current.some(
+          (item) => String(item.id) === String(notification.id)
+        )
+
+        if (alreadyExists) return current
+
+        return [notification, ...current]
+      })
+    })
+
+    socket.on('connect_error', () => {
+      setError('Live notifications unavailable. Please refresh.')
+    })
+
+    return () => {
+      socket.disconnect()
+    }
+  }, [token])
 
   async function markAsRead(id) {
     setUpdatingId(id)
@@ -101,9 +128,9 @@ export default function NotificationsPanel({ token }) {
     >
       <div className="notifications-heading">
         <div>
-          <h2>Due-date reminders</h2>
+          <h2>Notifications</h2>
           <p>
-            Stay updated on upcoming task deadlines.
+            Stay updated on task assignments and upcoming deadlines.
           </p>
         </div>
 
@@ -134,7 +161,7 @@ export default function NotificationsPanel({ token }) {
         </p>
       ) : notifications.length === 0 ? (
         <p className="notification-empty">
-          No due-date reminders yet.
+          No notifications yet.
         </p>
       ) : (
         <ul className="notifications-list">
