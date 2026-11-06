@@ -2,8 +2,9 @@
 
 The API is stateless for authentication: clients send JWTs and task data lives
 in PostgreSQL. Redis holds shared authentication rate-limit state and carries
-Socket.IO room broadcasts between API replicas. A gateway balances API traffic
-and upgrades real-time WebSocket connections. The frontend is a static build.
+Socket.IO room broadcasts between API replicas. A gateway resolves Compose
+service names at runtime and forwards API traffic and real-time WebSocket
+connections to the API service. The frontend is a static build.
 
 ## Prerequisites
 
@@ -19,7 +20,8 @@ and upgrades real-time WebSocket connections. The frontend is a static build.
 Create `deploy/.env` with `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`,
 `DB_PASSWORD`, `REDIS_URL`, `JWT_SECRET`, `PUBLIC_ORIGIN` (for example
 `https://tasks.example.com`), and `DB_SSL_CA_FILE` (absolute path to the CA
-certificate). This file is not committed. Configure the managed Redis URL with
+certificate). Start from [`deploy/.env.example`](../deploy/.env.example). This
+file is not committed. Configure the managed Redis URL with
 TLS/authentication when the provider supports it.
 
 ## Build and run
