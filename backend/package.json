@@ -5,6 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "node --test",
+    "test:unit": "node --test test/adminAnalytics.test.js test/auth.test.js test/dueDateNotificationWorker.test.js test/monthlyUptimeReport.test.js test/overdueEmailWorker.test.js test/projectInvitationRoutes.test.js test/projectInvitationService.test.js test/taskCommentRoutes.test.js test/taskSecurity.test.js test/validation.test.js test/weeklyReport.test.js",
+    "perf": "node scripts/performance-test.js",
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "db:migrate": "node src/scripts/migrate.js"

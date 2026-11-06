@@ -205,6 +205,11 @@ The application will undergo multiple levels of testing.
 
 Testing will follow the requirements and test cases documented in the Software Test Plan.
 
+The repository CI runs frontend lint/build and database-independent backend
+tests on Ubuntu, Windows, and macOS. PostgreSQL integration tests run in a
+PostgreSQL 16 service. See [`docs/performance-testing.md`](docs/performance-testing.md)
+for the repeatable 500-worker performance run and the latest local measurements.
+
 ---
 
 ## Team Information
