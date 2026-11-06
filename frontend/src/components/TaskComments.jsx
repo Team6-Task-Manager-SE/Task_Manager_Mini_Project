@@ -54,6 +54,7 @@ export default function TaskComments({ taskId, token }) {
 
     const socket = io({
       auth: { token },
+      transports: ['websocket'],
     })
 
     socket.on('connect', () => {

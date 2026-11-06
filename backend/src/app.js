@@ -114,6 +114,14 @@ function createApp(dependencies = {}) {
   // Initialize Express
   const app = express();
 
+  if (process.env.TRUST_PROXY) {
+    app.set("trust proxy", Number(process.env.TRUST_PROXY));
+  }
+
+  if (process.env.TRUST_PROXY === "true") {
+    app.set("trust proxy", 1);
+  }
+
   app.disable("x-powered-by");
 
   // Security middleware
