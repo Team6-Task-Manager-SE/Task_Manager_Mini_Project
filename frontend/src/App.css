@@ -239,6 +239,23 @@
   box-shadow: 0 3px 12px rgba(24, 56, 46, .08);
 }
 
+.text-button {
+  justify-self: start;
+  padding: 2px 0;
+  border: 0;
+  color: #356957;
+  background: transparent;
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.text-button:hover {
+  color: #18382e;
+  text-decoration: underline;
+}
+
 form {
   display: grid;
   gap: 17px;

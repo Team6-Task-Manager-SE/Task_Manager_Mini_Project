@@ -566,10 +566,20 @@ function TaskWorkspace({ user, token, onLogout }) {
 
 // Login and Registration
 function App() {
-  const [mode, setMode] = useState('login')
+  const [mode, setMode] = useState(() =>
+    new URLSearchParams(window.location.search).has('reset')
+      ? 'reset'
+      : 'login'
+  )
   const [login, setLogin] = useState(initialLogin)
   const [registration, setRegistration] =
     useState(initialRegistration)
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetToken, setResetToken] = useState(() =>
+    new URLSearchParams(window.location.search).get('reset') || ''
+  )
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmNewPassword, setConfirmNewPassword] = useState('')
 
   const [user, setUser] = useState(null)
 
@@ -582,10 +592,9 @@ function App() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
+    const query = new URLSearchParams(window.location.search)
     const confirmationToken =
-      new URLSearchParams(
-        window.location.search
-      ).get('confirm')
+      query.get('confirm')
 
     if (confirmationToken) {
       apiRequest(
@@ -663,6 +672,67 @@ function App() {
     }
   }
 
+  async function requestPasswordReset(event) {
+    event.preventDefault()
+    setLoading(true)
+    setError('')
+    setNotice('')
+
+    try {
+      await apiRequest('/api/auth/password-reset/request', {
+        method: 'POST',
+        body: JSON.stringify({ email: resetEmail }),
+      })
+      setNotice('If an account exists for that email, a reset link has been sent.')
+    } catch (requestError) {
+      setError(requestError.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function submitPasswordReset(event) {
+    event.preventDefault()
+    setError('')
+    setNotice('')
+
+    if (newPassword !== confirmNewPassword) {
+      setError('Passwords do not match')
+      return
+    }
+
+    setLoading(true)
+    try {
+      await apiRequest('/api/auth/password-reset/confirm', {
+        method: 'POST',
+        body: JSON.stringify({ token: resetToken, password: newPassword }),
+      })
+      localStorage.removeItem('taskManagerToken')
+      setToken(null)
+      setUser(null)
+      setMode('login')
+      setResetToken('')
+      setNewPassword('')
+      setConfirmNewPassword('')
+      window.history.replaceState({}, '', window.location.pathname)
+      setNotice('Password updated. You can now sign in.')
+    } catch (requestError) {
+      setError(requestError.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function returnToSignIn() {
+    setMode('login')
+    setResetToken('')
+    setNewPassword('')
+    setConfirmNewPassword('')
+    setError('')
+    setNotice('')
+    window.history.replaceState({}, '', window.location.pathname)
+  }
+
   async function submitRegistration(event) {
     event.preventDefault()
 
@@ -711,7 +781,10 @@ function App() {
     setNotice('You have been signed out.')
   }
 
-  if (user && token) {
+  const resetLinkIsOpen =
+    new URLSearchParams(window.location.search).has('reset')
+
+  if (user && token && !resetLinkIsOpen) {
     return (
       <TaskWorkspace
         user={user}
@@ -813,17 +886,25 @@ function App() {
             <h2>
               {mode === 'login'
                 ? 'Sign in to your account'
-                : 'Create your account'}
+                : mode === 'register'
+                  ? 'Create your account'
+                  : mode === 'forgot'
+                    ? 'Reset your password'
+                    : 'Choose a new password'}
             </h2>
 
             <p>
               {mode === 'login'
                 ? 'Pick up where you left off.'
-                : 'Start organizing your work in minutes.'}
+                : mode === 'register'
+                  ? 'Start organizing your work in minutes.'
+                  : mode === 'forgot'
+                    ? 'We’ll email you a secure link if the account exists.'
+                    : 'Choose a new password for your account.'}
             </p>
           </div>
 
-          <div
+          {(mode === 'login' || mode === 'register') && <div
             className="mode-switch"
             role="tablist"
             aria-label="Authentication mode"
@@ -855,7 +936,7 @@ function App() {
             >
               Create account
             </button>
-          </div>
+          </div>}
 
           {notice && (
             <p
@@ -922,8 +1003,18 @@ function App() {
                   ? 'Signing in…'
                   : 'Sign in'}
               </button>
+              <button
+                className="text-button"
+                type="button"
+                onClick={() => {
+                  setResetEmail(login.email)
+                  selectMode('forgot')
+                }}
+              >
+                Forgot password?
+              </button>
             </form>
-          ) : (
+          ) : mode === 'register' ? (
             <form onSubmit={submitRegistration}>
               <label>
                 Full name
@@ -1010,6 +1101,61 @@ function App() {
                 {loading
                   ? 'Creating account…'
                   : 'Create account'}
+              </button>
+            </form>
+          ) : mode === 'forgot' ? (
+            <form onSubmit={requestPasswordReset}>
+              <label>
+                Email address
+                <input
+                  type="email"
+                  autoComplete="email"
+                  value={resetEmail}
+                  onChange={(event) => setResetEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  required
+                />
+              </label>
+              <button className="primary-button" disabled={loading} type="submit">
+                {loading ? 'Sending…' : 'Send reset link'}
+              </button>
+              <button className="text-button" type="button" onClick={returnToSignIn}>
+                Back to sign in
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={submitPasswordReset}>
+              <label>
+                New password
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  placeholder="8+ characters, mixed case and number"
+                  minLength="8"
+                  maxLength="128"
+                  required
+                />
+              </label>
+              <label>
+                Confirm new password
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmNewPassword}
+                  onChange={(event) => setConfirmNewPassword(event.target.value)}
+                  placeholder="Repeat your new password"
+                  minLength="8"
+                  maxLength="128"
+                  required
+                />
+              </label>
+              <button className="primary-button" disabled={loading} type="submit">
+                {loading ? 'Updating…' : 'Update password'}
+              </button>
+              <button className="text-button" type="button" onClick={returnToSignIn}>
+                Back to sign in
               </button>
             </form>
           )}

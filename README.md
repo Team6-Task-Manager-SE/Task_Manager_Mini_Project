@@ -279,10 +279,13 @@ backend at `http://127.0.0.1:5000`.
 | `POST` | `/api/auth/register` | Create an account and send a confirmation link |
 | `POST` | `/api/auth/login` | Authenticate and receive a JWT |
 | `GET` | `/api/auth/confirm-email?token=...` | Confirm a registered email address |
+| `POST` | `/api/auth/password-reset/request` | Request a password reset link by email |
+| `POST` | `/api/auth/password-reset/confirm` | Set a new password using a reset token |
 | `GET` | `/api/auth/me` | Return the authenticated user; requires a bearer token |
 
 Authentication endpoints are limited to 10 requests per IP address per minute.
 Five consecutive incorrect passwords lock the account for 15 minutes.
+Password reset links expire after 30 minutes, are stored as token hashes, and can be used only once.
 
 ---
 
