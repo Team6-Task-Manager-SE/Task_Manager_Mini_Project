@@ -1,45 +1,23 @@
+CREATE TABLE IF NOT EXISTS notifications (
+    id BIGSERIAL PRIMARY KEY,
 
-require("dotenv").config();
+    user_id BIGINT NOT NULL
+        REFERENCES users(id) ON DELETE CASCADE,
 
-const pool = require("../config/database");
+    task_id BIGINT NOT NULL
+        REFERENCES tasks(id) ON DELETE CASCADE,
 
-async function generateDueDateNotifications(database = pool) {
-  const result = await database.query(`
-    INSERT INTO notifications (
-      user_id,
-      task_id,
-      notification_type,
-      message,
-      due_at
-    )
-    SELECT
-      COALESCE(t.assignee_id, t.owner_id),
-      t.id,
-      'due_soon',
-      'Task "' || t.title || '" is due within 24 hours.',
-      t.due_at
-    FROM tasks t
-    WHERE t.due_at IS NOT NULL
-      AND t.due_at > NOW()
-      AND t.due_at <= NOW() + INTERVAL '24 hours'
-      AND t.status <> 'completed'
-    ON CONFLICT DO NOTHING
-    RETURNING id
-  `);
+    notification_type VARCHAR(50) NOT NULL,
 
-  return result.rowCount;
-}
+    message TEXT NOT NULL,
 
-module.exports = { generateDueDateNotifications };
+    is_read BOOLEAN NOT NULL DEFAULT FALSE,
 
-if (require.main === module) {
-  generateDueDateNotifications()
-    .then((count) => {
-      console.log(`Created ${count} due-date notification(s).`);
-    })
-    .catch((error) => {
-      console.error("Notification worker failed:", error);
-      process.exitCode = 1;
-    })
-    .finally(() => pool.end());
-}
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS notifications_user_id_idx
+ON notifications(user_id);
+
+CREATE INDEX IF NOT EXISTS notifications_task_id_idx
+ON notifications(task_id);

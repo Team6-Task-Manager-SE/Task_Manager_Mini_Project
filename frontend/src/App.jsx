@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import NotificationsPanel from './components/NotificationsPanel'
 import WeeklyReport from './components/WeeklyReport'
+import TaskComments from './components/TaskComments'
 import './App.css'
 
 const initialLogin = {
@@ -541,8 +542,14 @@ function TaskWorkspace({ user, token, onLogout }) {
                       </button>
                     </>
                   )}
-                </div>
-              </li>
+                </div>                             
+                {task.projectId != null && (
+                  <TaskComments
+                    taskId={task.id}
+                    token={token}
+                  />
+                )}
+              </li>             
             ))}
           </ul>
         )}
