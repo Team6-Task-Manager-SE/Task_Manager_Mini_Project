@@ -1,3 +1,4 @@
+const crypto = require("node:crypto");
 const { hashPassword, verifyPassword } = require("./passwordService");
 const {
   createAccessToken,
@@ -47,6 +48,62 @@ function createAuthService({ users, emailService }) {
       });
 
       return { user, confirmationDelivery: emailResult.delivery };
+    },
+
+    async requestPasswordReset({ email, ipAddress }) {
+      const user = await users.findByEmail(email);
+
+      // Keep the response identical for known and unknown email addresses.
+      if (!user) {
+        return { accepted: true };
+      }
+
+      const token = crypto.randomBytes(32).toString("hex");
+      const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+
+      await users.createPasswordResetToken({
+        userId: user.id,
+        tokenHash,
+        expiresAt,
+      });
+      await emailService.sendPasswordReset({
+        email: user.email,
+        name: user.name,
+        token,
+      });
+      await users.addAuditLog({
+        userId: user.id,
+        eventType: "PASSWORD_RESET_REQUESTED",
+        ipAddress,
+      });
+
+      return { accepted: true };
+    },
+
+    async resetPassword({ token, password, ipAddress }) {
+      const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+      const passwordHash = await hashPassword(password);
+      const reset = await users.consumePasswordResetToken({
+        tokenHash,
+        passwordHash,
+      });
+
+      if (!reset) {
+        throw new AuthError(
+          "The password reset link is invalid or expired",
+          400,
+          "INVALID_RESET_TOKEN"
+        );
+      }
+
+      await users.addAuditLog({
+        userId: reset.userId,
+        eventType: "PASSWORD_RESET_COMPLETED",
+        ipAddress,
+      });
+
+      return { updated: true };
     },
 
     async login({ email, password, ipAddress }) {

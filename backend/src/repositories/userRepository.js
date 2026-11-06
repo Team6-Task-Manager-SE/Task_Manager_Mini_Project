@@ -77,6 +77,81 @@ function createUserRepository(pool) {
       return toPublicUser(result.rows[0]);
     },
 
+    async createPasswordResetToken({ userId, tokenHash, expiresAt }) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SELECT id FROM users WHERE id = $1 FOR UPDATE", [userId]);
+        await client.query(
+          "UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL",
+          [userId]
+        );
+        await client.query(
+          `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
+           VALUES ($1, $2, $3)`,
+          [userId, tokenHash, expiresAt]
+        );
+        await client.query("COMMIT");
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async consumePasswordResetToken({ tokenHash, passwordHash }) {
+      const client = await pool.connect();
+      try {
+        await client.query("BEGIN");
+        const tokenResult = await client.query(
+          `SELECT user_id
+             FROM password_reset_tokens
+            WHERE token_hash = $1
+              AND used_at IS NULL
+              AND expires_at > NOW()
+            FOR UPDATE`,
+          [tokenHash]
+        );
+
+        if (tokenResult.rowCount === 0) {
+          await client.query("ROLLBACK");
+          return null;
+        }
+
+        const userId = tokenResult.rows[0].user_id;
+        const userResult = await client.query(
+          `UPDATE users
+              SET password_hash = $1,
+                  failed_login_attempts = 0,
+                  locked_until = NULL,
+                  updated_at = NOW()
+            WHERE id = $2
+            RETURNING id`,
+          [passwordHash, userId]
+        );
+
+        if (userResult.rowCount === 0) {
+          await client.query("ROLLBACK");
+          return null;
+        }
+
+        await client.query(
+          `UPDATE password_reset_tokens
+              SET used_at = NOW()
+            WHERE user_id = $1 AND used_at IS NULL`,
+          [userId]
+        );
+        await client.query("COMMIT");
+        return { userId };
+      } catch (error) {
+        await client.query("ROLLBACK");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
     async addAuditLog({ userId, eventType, ipAddress, metadata = {} }) {
       await pool.query(
         `INSERT INTO audit_logs (user_id, event_type, ip_address, metadata)
