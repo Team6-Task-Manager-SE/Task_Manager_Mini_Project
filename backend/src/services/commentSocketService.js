@@ -38,6 +38,9 @@ function createCommentSocketService(httpServer, { tasks }) {
   });
 
   io.on("connection", (socket) => {
+    // Each authenticated socket can receive only its own private assignments.
+    socket.join(`user:${socket.user.id}`);
+
     socket.on("task:join", async (taskId, acknowledge) => {
       const respond =
         typeof acknowledge === "function" ? acknowledge : () => {};

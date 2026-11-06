@@ -76,6 +76,7 @@ const tasks = createTaskRepository(pool);
 const commentSocketService = createCommentSocketService(server, {
   tasks,
 });
+app.set("io", commentSocketService.io);
 
   let stopNotificationScheduler = () => {};
 
@@ -107,7 +108,6 @@ const commentSocketService = createCommentSocketService(server, {
     stopNotificationScheduler();
     // Close Socket.IO connections.
     commentSocketService.io.disconnectSockets(true);
-    app.set("io", commentSocketService.io);
     try {
       // Stop accepting new HTTP requests.
       await new Promise((resolve, reject) => {
