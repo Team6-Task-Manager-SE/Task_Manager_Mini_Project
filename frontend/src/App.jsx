@@ -129,6 +129,86 @@ function DashboardSummary({ summary }) {
   )
 }
 
+function AdminUsageAnalytics({ token }) {
+  const [overview, setOverview] = useState(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let active = true
+    apiRequest('/api/admin/analytics', {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((payload) => {
+        if (active) setOverview(payload.data)
+      })
+      .catch((requestError) => {
+        if (active) setError(requestError.message)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => { active = false }
+  }, [token])
+
+  return (
+    <section className="admin-analytics" aria-labelledby="admin-analytics-title">
+      <div className="admin-analytics-heading">
+        <div>
+          <p className="eyebrow">ADMINISTRATION</p>
+          <h2 id="admin-analytics-title">Usage analytics</h2>
+          <p>Account activity from the last 30 days and task activity by project.</p>
+        </div>
+        {overview && <small>Updated {new Date(overview.generatedAt).toLocaleString()}</small>}
+      </div>
+
+      {loading && <p className="empty-state" role="status">Loading analytics…</p>}
+      {error && <p className="message error" role="alert">{error}</p>}
+      {overview && (
+        <>
+          <div className="admin-analytics-grid">
+            <div><span>Registered users</span><strong>{overview.summary.totalUsers}</strong></div>
+            <div><span>Active users · 30 days</span><strong>{overview.summary.activeUsers}</strong></div>
+            <div><span>New users · 30 days</span><strong>{overview.summary.newUsers}</strong></div>
+            <div><span>Projects</span><strong>{overview.summary.totalProjects}</strong></div>
+            <div><span>Tasks</span><strong>{overview.summary.totalTasks}</strong></div>
+            <div><span>Completed tasks</span><strong>{overview.summary.completedTasks}</strong></div>
+            <div><span>Recorded events · 30 days</span><strong>{overview.summary.recordedEvents}</strong></div>
+          </div>
+
+          <div className="admin-projects-heading">
+            <h3>Project activity</h3>
+            <span>Project membership is the app’s current team/workspace grouping.</span>
+          </div>
+          {overview.projects.length === 0 ? (
+            <p className="empty-state">No project activity has been recorded yet.</p>
+          ) : (
+            <div className="admin-projects-scroll" role="region" aria-label="Project activity" tabIndex="0">
+              <table className="admin-projects-table">
+                <thead>
+                  <tr><th scope="col">Project</th><th scope="col">Members</th><th scope="col">Tasks</th><th scope="col">Completed</th><th scope="col">Completion</th></tr>
+                </thead>
+                <tbody>
+                  {overview.projects.map((project) => (
+                    <tr key={project.id}>
+                      <th scope="row">{project.name}</th>
+                      <td>{project.memberCount}</td>
+                      <td>{project.taskCount}</td>
+                      <td>{project.completedCount}</td>
+                      <td>{project.completionRate}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  )
+}
+
 // Main Task Manager Workspace
 function TaskWorkspace({ user, token, onLogout }) {
   const [tasks, setTasks] = useState([])
@@ -322,6 +402,8 @@ function TaskWorkspace({ user, token, onLogout }) {
 
         {/* Sprint 1 - Dashboard Summary */}
         <DashboardSummary summary={summary} />
+
+        {user.role === 'admin' && <AdminUsageAnalytics token={token} />}
 
         {/* Sprint 2 Issue #25 - Weekly Productivity Report */}
         <WeeklyReport token={token} />

@@ -284,11 +284,21 @@ backend at `http://127.0.0.1:5000`.
 Authentication endpoints are limited to 10 requests per IP address per minute.
 Five consecutive incorrect passwords lock the account for 15 minutes.
 
+### Admin Usage Analytics
+
+`GET /api/admin/analytics` returns account activity for the last 30 days and
+task/member totals grouped by project. The route requires a valid bearer token
+whose account has the `admin` role. The current schema represents collaborative
+workspaces with `projects` and `project_members`, so project membership is the
+team grouping shown in the dashboard. Analytics are aggregated from the
+PostgreSQL users, projects, tasks, and audit log tables; no personal task text
+or email addresses are exposed.
+
 ---
 
 ## Future Enhancements
 
-- Improved reporting and analytics.
+- Expanded reporting and analytics beyond the current admin usage dashboard.
 - Enhanced collaboration features.
 - Additional automation for task management.
 - Improved notification customization.
