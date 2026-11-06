@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react'
 import NotificationsPanel from './components/NotificationsPanel'
 import WeeklyReport from './components/WeeklyReport'
 import TaskComments from './components/TaskComments'
+import TaskAssignmentNotifications from './components/TaskAssignmentNotifications'
 import './App.css'
 
 const initialLogin = {
@@ -383,6 +384,8 @@ function TaskWorkspace({ user, token, onLogout }) {
           </button>
         </div>
       </header>
+
+      <TaskAssignmentNotifications token={token} />
 
       <section className="workspace-card">
         <div className="workspace-heading">

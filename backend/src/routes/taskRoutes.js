@@ -122,6 +122,15 @@ function createTaskRouter({ tasks }) {
         category: req.body.category,
       });
 
+      if (data.assigneeId != null) {
+        req.app.get("io")?.to(`user:${data.assigneeId}`).emit("task:assigned", {
+          taskId: data.id,
+          title: data.title,
+          projectId: data.projectId,
+          assignedAt: new Date().toISOString(),
+        });
+      }
+
       return res.status(201).json({
         status: "success",
         message: "Task created successfully",
@@ -239,6 +248,19 @@ function createTaskRouter({ tasks }) {
         return res.status(404).json({
           status: "error",
           message: "Task not found",
+        });
+      }
+
+      const assignedUserId = updated.assigneeId;
+      if (
+        assignedUserId != null &&
+        String(assignedUserId) !== String(access.task.assigneeId)
+      ) {
+        req.app.get("io")?.to(`user:${assignedUserId}`).emit("task:assigned", {
+          taskId: updated.id,
+          title: updated.title,
+          projectId: updated.projectId,
+          assignedAt: new Date().toISOString(),
         });
       }
 
