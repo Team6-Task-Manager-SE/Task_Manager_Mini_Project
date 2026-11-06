@@ -48,8 +48,14 @@ async function start() {
   // Apply pending database migrations.
   await runMigrations(pool);
 
-  // Connect Redis if it is not already connected.
-  if (!redisClient.isOpen) {
+  // Redis is optional in development because the auth rate limiter has an
+  // in-memory fallback. Keep it required in production unless explicitly
+  // connected by the deployment environment.
+  const useDevelopmentRateLimitFallback =
+    !isProduction && process.env.DEV_DISABLE_REDIS === "true";
+  if (useDevelopmentRateLimitFallback) {
+    console.warn("Redis disabled for development; using in-memory auth rate limiting.");
+  } else if (!redisClient.isOpen) {
     await redisClient.connect();
   }
 
