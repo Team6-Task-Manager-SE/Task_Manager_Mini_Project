@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import NotificationsPanel from './components/NotificationsPanel'
 import WeeklyReport from './components/WeeklyReport'
 import TaskComments from './components/TaskComments'
@@ -222,6 +222,13 @@ function TaskWorkspace({ user, token, onLogout }) {
   const [selectedProjectId, setSelectedProjectId] = useState('')
   const [projectName, setProjectName] = useState('')
   const [projectDescription, setProjectDescription] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [priorityFilter, setPriorityFilter] = useState('all')
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [dueFromFilter, setDueFromFilter] = useState('')
+  const [dueToFilter, setDueToFilter] = useState('')
+  const [sortOrder, setSortOrder] = useState('created-desc')
   const [title, setTitle] = useState('')
   const [priority, setPriority] = useState('medium')
   const [tagsInput, setTagsInput] = useState('')
@@ -275,6 +282,72 @@ function TaskWorkspace({ user, token, onLogout }) {
     }
   }, [authorizedRequest])
 
+  const projectTasks = useMemo(
+    () => selectedProjectId
+      ? tasks.filter((task) => String(task.projectId) === selectedProjectId)
+      : tasks,
+    [tasks, selectedProjectId]
+  )
+  const selectedProject = projects.find((project) => String(project.id) === selectedProjectId)
+
+  const categories = useMemo(
+    () => [...new Set(tasks.map((task) => task.category).filter(Boolean))]
+      .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: 'base' })),
+    [tasks]
+  )
+
+  const visibleTasks = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase()
+    const localDateKey = (value) => {
+      if (!value) return ''
+      const date = new Date(value)
+      if (Number.isNaN(date.getTime())) return ''
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+
+    const filtered = projectTasks.filter((task) => {
+      const matchesQuery = !query ||
+        `${task.title || ''} ${task.description || ''}`.toLocaleLowerCase().includes(query)
+      const matchesStatus = statusFilter === 'all' || task.status === statusFilter
+      const matchesPriority = priorityFilter === 'all' || task.priority === priorityFilter
+      const matchesCategory = categoryFilter === 'all' || task.category === categoryFilter
+      const dueDate = localDateKey(task.dueDate)
+      const matchesDueRange =
+        (!dueFromFilter || Boolean(dueDate && dueDate >= dueFromFilter)) &&
+        (!dueToFilter || Boolean(dueDate && dueDate <= dueToFilter))
+
+      return matchesQuery && matchesStatus && matchesPriority && matchesCategory && matchesDueRange
+    })
+
+    const priorityRank = { high: 0, medium: 1, low: 2 }
+    const sorted = [...filtered]
+    sorted.sort((left, right) => {
+      if (sortOrder === 'due-asc') {
+        const leftDue = localDateKey(left.dueDate) || '9999-12-31'
+        const rightDue = localDateKey(right.dueDate) || '9999-12-31'
+        return leftDue.localeCompare(rightDue) || left.title.localeCompare(right.title)
+      }
+      if (sortOrder === 'priority-desc') {
+        return (priorityRank[left.priority] ?? 3) - (priorityRank[right.priority] ?? 3) ||
+          right.createdAt.localeCompare(left.createdAt)
+      }
+      return right.createdAt.localeCompare(left.createdAt)
+    })
+    return sorted
+  }, [projectTasks, searchQuery, statusFilter, priorityFilter, categoryFilter, dueFromFilter, dueToFilter, sortOrder])
+
+  function clearTaskTools() {
+    setSearchQuery('')
+    setStatusFilter('all')
+    setPriorityFilter('all')
+    setCategoryFilter('all')
+    setDueFromFilter('')
+    setDueToFilter('')
+    setSortOrder('created-desc')
+  }
   // Schedule initial loading asynchronously for React Hooks lint.
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -419,11 +492,6 @@ function TaskWorkspace({ user, token, onLogout }) {
       setError(requestError.message)
     }
   }
-
-  const projectTasks = selectedProjectId
-    ? tasks.filter((task) => String(task.projectId) === selectedProjectId)
-    : tasks
-  const selectedProject = projects.find((project) => String(project.id) === selectedProjectId)
 
   return (
     <main className="workspace-shell">
@@ -627,6 +695,75 @@ function TaskWorkspace({ user, token, onLogout }) {
           </p>
         )}
 
+        <section className="task-tools" aria-label="Search, filter, and sort tasks">
+          <label className="task-search-field">
+            Search tasks
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search titles and descriptions"
+            />
+          </label>
+
+          <label>
+            Status
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+              <option value="all">All statuses</option>
+              <option value="todo">To do</option>
+              <option value="in-progress">In progress</option>
+              <option value="completed">Completed</option>
+            </select>
+          </label>
+
+          <label>
+            Priority
+            <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value)}>
+              <option value="all">All priorities</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </label>
+
+          <label>
+            Category
+            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+              <option value="all">All categories</option>
+              {categories.map((categoryName) => (
+                <option key={categoryName} value={categoryName}>{categoryName}</option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Due from
+            <input type="date" value={dueFromFilter} onChange={(event) => setDueFromFilter(event.target.value)} />
+          </label>
+
+          <label>
+            Due to
+            <input type="date" value={dueToFilter} onChange={(event) => setDueToFilter(event.target.value)} />
+          </label>
+
+          <label>
+            Sort by
+            <select value={sortOrder} onChange={(event) => setSortOrder(event.target.value)}>
+              <option value="created-desc">Newest first</option>
+              <option value="due-asc">Due date (earliest first)</option>
+              <option value="priority-desc">Priority (high to low)</option>
+            </select>
+          </label>
+
+          <button className="secondary-button task-tools-clear" type="button" onClick={clearTaskTools}>
+            Clear search and filters
+          </button>
+        </section>
+
+        <p className="task-results-count" aria-live="polite">
+          Showing {visibleTasks.length} of {tasks.length} tasks
+        </p>
+
         {/* Sprint 1 - Task List */}
         {loading ? (
           <p className="empty-state">
@@ -636,7 +773,7 @@ function TaskWorkspace({ user, token, onLogout }) {
           selectedProjectId ? (
             <section className="kanban-board" aria-label={`${selectedProject?.name || 'Project'} Kanban board`}>
               {BOARD_COLUMNS.map((column) => {
-                const columnTasks = projectTasks.filter((task) => task.status === column.id)
+                const columnTasks = visibleTasks.filter((task) => task.status === column.id)
                 return (
                   <section
                     className="kanban-column"
@@ -691,7 +828,7 @@ function TaskWorkspace({ user, token, onLogout }) {
             </section>
           ) : (
           <ul className="task-list">
-            {projectTasks.map((task) => (
+            {visibleTasks.map((task) => (
               <li key={task.id}>
                 {editingId === task.id ? (
                   <input
@@ -815,9 +952,11 @@ function TaskWorkspace({ user, token, onLogout }) {
           )
         )}
 
-        {!loading && projectTasks.length === 0 && (
+        {!loading && visibleTasks.length === 0 && (
           <p className="empty-state">
-            {selectedProjectId ? 'This project has no tasks yet. Add one above.' : 'No tasks yet. Add your first one above.'}
+            {projectTasks.length === 0
+              ? (selectedProjectId ? 'This project has no tasks yet. Add one above.' : 'No tasks yet. Add your first one above.')
+              : 'No tasks match these search and filter settings.'}
           </p>
         )}
       </section>
