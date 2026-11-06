@@ -4,6 +4,7 @@ require("dotenv").config();
 const fs = require("node:fs");
 const https = require("node:https");
 const http = require("node:http");
+const { createAdapter } = require("@socket.io/redis-adapter");
 
 const app = require("./app");
 const pool = require("./config/database");
@@ -45,8 +46,11 @@ async function start() {
     throw new Error("Production requires DB_SSL=true");
   }
 
-  // Apply pending database migrations.
-  await runMigrations(pool);
+  // A deployment can run migrations once as a separate release job before
+  // starting multiple API replicas. Keep automatic migration for local runs.
+  if (process.env.RUN_MIGRATIONS_ON_START !== "false") {
+    await runMigrations(pool);
+  }
 
   // Redis is optional in development because the auth rate limiter has an
   // in-memory fallback. Keep it required in production unless explicitly
@@ -60,22 +64,42 @@ async function start() {
   }
 
   let server;
+  let socketPubClient;
+  let socketSubClient;
 
-  const useHttps =
+  const tlsTerminatedAtProxy = process.env.TLS_TERMINATED_AT_PROXY === "true";
+  const useHttps = !tlsTerminatedAtProxy && (
     isProduction ||
     Boolean(process.env.HTTPS_KEY_PATH) ||
-    Boolean(process.env.HTTPS_CERT_PATH);
+    Boolean(process.env.HTTPS_CERT_PATH)
+  );
 
   if (useHttps) {
     server = createHttpsServer();
   } else {
     server = http.createServer(app);
   }
-// F-042: Initialize authenticated real-time comment updates.
-const tasks = createTaskRepository(pool);
-const commentSocketService = createCommentSocketService(server, {
-  tasks,
-});
+  // F-042: Initialize authenticated real-time comment updates.
+  const tasks = createTaskRepository(pool);
+  const commentSocketService = createCommentSocketService(server, {
+    tasks,
+  });
+  app.set("io", commentSocketService.io);
+
+  // Share Socket.IO rooms and broadcasts across backend replicas. Local
+  // development can opt out alongside the in-memory auth rate-limit fallback.
+  if (!useDevelopmentRateLimitFallback) {
+    socketPubClient = redisClient.duplicate();
+    socketSubClient = redisClient.duplicate();
+    socketPubClient.on("error", (error) =>
+      console.error("Socket.IO Redis publisher error:", error.message)
+    );
+    socketSubClient.on("error", (error) =>
+      console.error("Socket.IO Redis subscriber error:", error.message)
+    );
+    await Promise.all([socketPubClient.connect(), socketSubClient.connect()]);
+    commentSocketService.io.adapter(createAdapter(socketPubClient, socketSubClient));
+  }
 
   let stopNotificationScheduler = () => {};
 
@@ -107,7 +131,6 @@ const commentSocketService = createCommentSocketService(server, {
     stopNotificationScheduler();
     // Close Socket.IO connections.
     commentSocketService.io.disconnectSockets(true);
-    app.set("io", commentSocketService.io);
     try {
       // Stop accepting new HTTP requests.
       await new Promise((resolve, reject) => {
@@ -121,6 +144,8 @@ const commentSocketService = createCommentSocketService(server, {
       });
 
       if (redisClient.isOpen) {
+        if (socketPubClient?.isOpen) await socketPubClient.quit();
+        if (socketSubClient?.isOpen) await socketSubClient.quit();
         await redisClient.quit();
       }
 
