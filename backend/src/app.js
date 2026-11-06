@@ -53,6 +53,12 @@ const {
 
 const createProjectInvitationRouter = require("./routes/projectInvitationRoutes");
 
+// Sprint 2 Issue #26 - Admin usage analytics
+const {
+  createAdminAnalyticsRepository,
+} = require("./repositories/adminAnalyticsRepository");
+const createAdminAnalyticsRouter = require("./routes/adminAnalyticsRoutes");
+
 function createApp(dependencies = {}) {
   // Database and external services
   const database = dependencies.pool || pool;
@@ -70,6 +76,10 @@ function createApp(dependencies = {}) {
   const reports =
     dependencies.reports ||
     createWeeklyReportRepository(database);
+
+  const analytics =
+    dependencies.analytics ||
+    createAdminAnalyticsRepository(database);
 
   // F-040 Invitation Repository
   const invitations =
@@ -186,6 +196,11 @@ function createApp(dependencies = {}) {
     createProjectInvitationRouter({
       invitationService,
     })
+  );
+
+  app.use(
+    "/api/admin",
+    createAdminAnalyticsRouter({ analytics })
   );
 
   // Global error handler
