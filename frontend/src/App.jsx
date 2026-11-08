@@ -4,6 +4,7 @@ import NotificationsPanel from './components/NotificationsPanel'
 import WeeklyReport from './components/WeeklyReport'
 import TaskComments from './components/TaskComments'
 import TaskAssignmentNotifications from './components/TaskAssignmentNotifications'
+import { organizeTasks } from './utils/taskOrganization'
 import './App.css'
 
 const initialLogin = {
@@ -296,48 +297,18 @@ function TaskWorkspace({ user, token, onLogout }) {
     [tasks]
   )
 
-  const visibleTasks = useMemo(() => {
-    const query = searchQuery.trim().toLocaleLowerCase()
-    const localDateKey = (value) => {
-      if (!value) return ''
-      const date = new Date(value)
-      if (Number.isNaN(date.getTime())) return ''
-      const year = date.getFullYear()
-      const month = String(date.getMonth() + 1).padStart(2, '0')
-      const day = String(date.getDate()).padStart(2, '0')
-      return `${year}-${month}-${day}`
-    }
-
-    const filtered = projectTasks.filter((task) => {
-      const matchesQuery = !query ||
-        `${task.title || ''} ${task.description || ''}`.toLocaleLowerCase().includes(query)
-      const matchesStatus = statusFilter === 'all' || task.status === statusFilter
-      const matchesPriority = priorityFilter === 'all' || task.priority === priorityFilter
-      const matchesCategory = categoryFilter === 'all' || task.category === categoryFilter
-      const dueDate = localDateKey(task.dueDate)
-      const matchesDueRange =
-        (!dueFromFilter || Boolean(dueDate && dueDate >= dueFromFilter)) &&
-        (!dueToFilter || Boolean(dueDate && dueDate <= dueToFilter))
-
-      return matchesQuery && matchesStatus && matchesPriority && matchesCategory && matchesDueRange
-    })
-
-    const priorityRank = { high: 0, medium: 1, low: 2 }
-    const sorted = [...filtered]
-    sorted.sort((left, right) => {
-      if (sortOrder === 'due-asc') {
-        const leftDue = localDateKey(left.dueDate) || '9999-12-31'
-        const rightDue = localDateKey(right.dueDate) || '9999-12-31'
-        return leftDue.localeCompare(rightDue) || left.title.localeCompare(right.title)
-      }
-      if (sortOrder === 'priority-desc') {
-        return (priorityRank[left.priority] ?? 3) - (priorityRank[right.priority] ?? 3) ||
-          right.createdAt.localeCompare(left.createdAt)
-      }
-      return right.createdAt.localeCompare(left.createdAt)
-    })
-    return sorted
-  }, [projectTasks, searchQuery, statusFilter, priorityFilter, categoryFilter, dueFromFilter, dueToFilter, sortOrder])
+  const visibleTasks = useMemo(
+    () => organizeTasks(projectTasks, {
+      searchQuery,
+      statusFilter,
+      priorityFilter,
+      categoryFilter,
+      dueFromFilter,
+      dueToFilter,
+      sortOrder,
+    }),
+    [projectTasks, searchQuery, statusFilter, priorityFilter, categoryFilter, dueFromFilter, dueToFilter, sortOrder]
+  )
 
   function clearTaskTools() {
     setSearchQuery('')
