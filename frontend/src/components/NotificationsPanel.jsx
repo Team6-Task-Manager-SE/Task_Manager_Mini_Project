@@ -53,6 +53,8 @@ export default function NotificationsPanel({ token }) {
 
     const socket = io({
       auth: { token },
+      transports: ['websocket'],
+
     })
 
     socket.on('notification:new', (notification) => {
