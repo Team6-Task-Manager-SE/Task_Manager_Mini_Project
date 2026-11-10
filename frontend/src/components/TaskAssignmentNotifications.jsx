@@ -6,7 +6,7 @@ export default function TaskAssignmentNotifications({ token }) {
   const [connectionError, setConnectionError] = useState(false)
 
   useEffect(() => {
-    const socket = io({ auth: { token } })
+    const socket = io({ auth: { token },  transports: ['websocket'], })
     const onAssignment = (notification) => {
       setNotifications((current) => [notification, ...current].slice(0, 5))
       setConnectionError(false)
