@@ -1,0 +1,112 @@
+
+name: Task Manager CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+jobs:
+  cross-platform:
+    name: Build and unit tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+      - name: Run backend unit tests
+        working-directory: backend
+        run: npm run test:unit
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Run frontend unit tests
+        working-directory: frontend
+        run: npm test
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+  postgres-integration:
+    name: PostgreSQL integration tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: task_manager_db
+          POSTGRES_USER: task_manager
+          POSTGRES_PASSWORD: task_manager_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U task_manager -d task_manager_db"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_NAME: task_manager_db
+      DB_USER: task_manager
+      DB_PASSWORD: task_manager_test
+      DB_SSL: "false"
+      JWT_SECRET: test-only-secret-for-ci
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+      - name: Apply database migrations
+        working-directory: backend
+        run: npm run db:migrate
+      - name: Run backend unit and integration tests
+        working-directory: backend
+        run: npm test
+
+  deployment-images:
+    name: Validate scaled deployment images and gateway config
+    runs-on: ubuntu-latest
+    env:
+      DB_HOST: postgres.example.invalid
+      DB_PORT: "5432"
+      DB_NAME: task_manager_test
+      DB_USER: task_manager_test
+      DB_PASSWORD: test-only-password
+      REDIS_URL: redis://redis.example.invalid:6379
+      JWT_SECRET: ci-only-secret-not-used-to-start-the-app
+      PUBLIC_ORIGIN: https://tasks.example.test
+      DB_SSL_CA_FILE: /tmp/postgres-ca.pem
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Create a placeholder CA file for Compose validation
+        run: printf 'test-only-placeholder\n' > /tmp/postgres-ca.pem
+      - name: Validate Compose configuration
+        run: docker compose --env-file /dev/null -f deploy/compose.yaml config --quiet
+      - name: Build production backend and frontend images
+        run: docker compose --env-file /dev/null -f deploy/compose.yaml build api frontend
+      - name: Validate gateway Nginx configuration
+        run: docker compose --env-file /dev/null -f deploy/compose.yaml run --rm --no-deps gateway nginx -t
