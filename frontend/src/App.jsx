@@ -234,7 +234,9 @@ function TaskWorkspace({ user, token, onLogout }) {
   const [priority, setPriority] = useState('medium')
   const [tagsInput, setTagsInput] = useState('')
   const [category, setCategory] = useState('')
+  const [dueDate, setDueDate] = useState('')
   const [summary, setSummary] = useState(emptySummary)
+  const [reportVersion, setReportVersion] = useState(0)
 
   const [editingId, setEditingId] = useState(null)
   const [editingTitle, setEditingTitle] = useState('')
@@ -373,6 +375,7 @@ function TaskWorkspace({ user, token, onLogout }) {
           priority,
           tags: parseTags(tagsInput),
           category: category.trim(),
+          dueDate: dueDate ? new Date(dueDate).toISOString() : null,
           projectId: selectedProjectId ? Number(selectedProjectId) : null,
         }),
       })
@@ -381,9 +384,11 @@ function TaskWorkspace({ user, token, onLogout }) {
       setPriority('medium')
       setTagsInput('')
       setCategory('')
+      setDueDate('')
       setMessage('Task created successfully.')
 
       await loadTasks()
+      setReportVersion((version) => version + 1)
     } catch (requestError) {
       setError(requestError.message)
     }
@@ -441,6 +446,7 @@ function TaskWorkspace({ user, token, onLogout }) {
       setMessage('Task deleted successfully.')
 
       await loadTasks()
+      setReportVersion((version) => version + 1)
     } catch (requestError) {
       setError(requestError.message)
     }
@@ -459,6 +465,7 @@ function TaskWorkspace({ user, token, onLogout }) {
       setMessage(`Task moved to ${BOARD_COLUMNS.find((column) => column.id === nextStatus)?.label || nextStatus}.`)
       await loadTasks()
       await loadProjects()
+      setReportVersion((version) => version + 1)
     } catch (requestError) {
       setError(requestError.message)
     }
@@ -521,7 +528,7 @@ function TaskWorkspace({ user, token, onLogout }) {
         {user.role === 'admin' && <AdminUsageAnalytics token={token} />}
 
         {/* Sprint 2 Issue #25 - Weekly Productivity Report */}
-        <WeeklyReport token={token} />
+        <WeeklyReport key={reportVersion} token={token} />
 
         {/* Sprint 2 Issue #19 - Due-Date Notifications */}
         <NotificationsPanel token={token} />
@@ -619,6 +626,16 @@ function TaskWorkspace({ user, token, onLogout }) {
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label>
+              Due Date &amp; Time
+
+              <input
+                type="datetime-local"
+                value={dueDate}
+                onChange={(event) => setDueDate(event.target.value)}
+              />
             </label>
 
             <label>
@@ -869,6 +886,20 @@ function TaskWorkspace({ user, token, onLogout }) {
                     </>
                   ) : (
                     <>
+                      <select
+                        aria-label={`Change status for ${task.title}`}
+                        value={task.status}
+                        onChange={(event) =>
+                          void moveTask(task.id, event.target.value)
+                        }
+                      >
+                        {BOARD_COLUMNS.map((column) => (
+                          <option key={column.id} value={column.id}>
+                            {column.label}
+                          </option>
+                        ))}
+                      </select>
+
                       <select
                         aria-label="Change priority"
                         value={task.priority}
